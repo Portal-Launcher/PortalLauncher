@@ -561,6 +561,18 @@ set(MODRINTH_SOURCES
     modplatform/modrinth/ModrinthInstanceCreationTask.h
     modplatform/modrinth/ModrinthPackExportTask.cpp
     modplatform/modrinth/ModrinthPackExportTask.h
+    modplatform/modrinth/shared/ModrinthSharedApi.cpp
+    modplatform/modrinth/shared/ModrinthSharedApi.h
+    modplatform/modrinth/shared/ModrinthSharedAttachment.cpp
+    modplatform/modrinth/shared/ModrinthSharedAttachment.h
+    modplatform/modrinth/shared/ModrinthSharedJoinTask.cpp
+    modplatform/modrinth/shared/ModrinthSharedJoinTask.h
+    modplatform/modrinth/shared/ModrinthSharedPublishTask.cpp
+    modplatform/modrinth/shared/ModrinthSharedPublishTask.h
+    modplatform/modrinth/shared/ModrinthSharedSyncTask.cpp
+    modplatform/modrinth/shared/ModrinthSharedSyncTask.h
+    modplatform/modrinth/shared/ModrinthSignInTask.cpp
+    modplatform/modrinth/shared/ModrinthSignInTask.h
 )
 
 set(PACKWIZ_SOURCES
@@ -1075,6 +1087,10 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/NewInstanceDialog.h
     ui/dialogs/NewsDialog.cpp
     ui/dialogs/NewsDialog.h
+    ui/dialogs/ModrinthJoinDialog.cpp
+    ui/dialogs/ModrinthJoinDialog.h
+    ui/dialogs/ModrinthSharingDialog.cpp
+    ui/dialogs/ModrinthSharingDialog.h
     ui/pagedialog/PageDialog.cpp
     ui/pagedialog/PageDialog.h
     ui/dialogs/ProgressDialog.cpp

@@ -53,6 +53,8 @@
 #include "ui/ToolTipFilter.h"
 #include "ui/ViewLogWindow.h"
 
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+#include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/instanceview/AccessibleInstanceView.h"
 
@@ -1522,6 +1524,15 @@ bool Application::launch(BaseInstance* instance,
     if (m_updateRunning) {
         qDebug() << "Cannot launch instances while an update is running. Please try again when updates are completed.";
     } else if (instance->canLaunch()) {
+        // Shared instances: joined packs pull the owner's latest changes right
+        // before launch. Failures never block playing (softFail).
+        if (auto attachment = ModrinthShared::Attachment::load(instance->instanceRoot());
+            attachment && attachment->isMember()) {
+            ModrinthSharedSyncTask syncTask(instance, /*softFail*/ true);
+            ProgressDialog syncDialog(m_mainWindow);
+            syncDialog.setSkipButton(true, tr("Skip update"));
+            syncDialog.execWithTask(&syncTask);
+        }
         QMutexLocker locker(&m_instanceExtrasMutex);
         auto& extras = m_instanceExtras[instance->id()];
         auto window = extras.window;

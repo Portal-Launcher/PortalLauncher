@@ -142,11 +142,13 @@
      <bool>true</bool>
     </property>
     <addaction name="actionAddInstance"/>
+    <addaction name="actionJoinSharedPack"/>
     <addaction name="separator"/>
     <addaction name="actionLaunchInstance"/>
     <addaction name="actionKillInstance"/>
     <addaction name="separator"/>
     <addaction name="actionEditInstance"/>
+    <addaction name="actionShareInstance"/>
     <addaction name="actionChangeInstGroup"/>
     <addaction name="actionViewSelectedInstFolder"/>
     <addaction name="actionExportInstance"/>
@@ -292,6 +294,28 @@
    </property>
    <property name="toolTip">
     <string>Add a new instance.</string>
+   </property>
+  </action>
+  <action name="actionJoinSharedPack">
+   <property name="icon">
+    <iconset theme="server"/>
+   </property>
+   <property name="text">
+    <string>&amp;Join Shared Pack...</string>
+   </property>
+   <property name="toolTip">
+    <string>Join a modpack a friend shared with you via a modrinth.com/share link.</string>
+   </property>
+  </action>
+  <action name="actionShareInstance">
+   <property name="icon">
+    <iconset theme="accounts"/>
+   </property>
+   <property name="text">
+    <string>S&amp;haring...</string>
+   </property>
+   <property name="toolTip">
+    <string>Share this instance with friends and push updates to them via Modrinth shared instances.</string>
    </property>
   </action>
   <action name="actionCheckUpdate">

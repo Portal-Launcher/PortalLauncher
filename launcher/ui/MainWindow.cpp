@@ -99,6 +99,8 @@
 #include "ui/dialogs/CreateShortcutDialog.h"
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ExportInstanceDialog.h"
+#include "ui/dialogs/ModrinthJoinDialog.h"
+#include "ui/dialogs/ModrinthSharingDialog.h"
 #include "ui/dialogs/ExportPackDialog.h"
 #include "ui/dialogs/IconPickerDialog.h"
 #include "ui/dialogs/ImportResourceDialog.h"
@@ -1404,6 +1406,20 @@ void MainWindow::on_actionEditInstance_triggered()
     }
 }
 
+void MainWindow::on_actionShareInstance_triggered()
+{
+    if (!m_selectedInstance)
+        return;
+    ModrinthSharingDialog dialog(this, m_selectedInstance);
+    dialog.exec();
+}
+
+void MainWindow::on_actionJoinSharedPack_triggered()
+{
+    ModrinthJoinDialog dialog(this);
+    dialog.exec();
+}
+
 void MainWindow::on_actionManageAccounts_triggered()
 {
     APPLICATION->ShowGlobalSettings(this, "accounts");
@@ -1771,6 +1787,7 @@ void MainWindow::updateStatusCenter()
 void MainWindow::setInstanceActionsEnabled(bool enabled)
 {
     ui->actionEditInstance->setEnabled(enabled);
+    ui->actionShareInstance->setEnabled(enabled);
     ui->actionChangeInstGroup->setEnabled(enabled);
     ui->actionViewSelectedInstFolder->setEnabled(enabled);
     ui->actionExportInstance->setEnabled(enabled);

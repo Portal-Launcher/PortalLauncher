@@ -1,0 +1,408 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "ModrinthSharedPublishTask.h"
+
+#include <QCryptographicHash>
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QJsonDocument>
+#include <QTemporaryDir>
+
+#include "FileSystem.h"
+#include "ModrinthSharedApi.h"
+#include "archive/ArchiveWriter.h"
+#include "minecraft/Component.h"
+#include "minecraft/MinecraftInstance.h"
+#include "minecraft/PackProfile.h"
+
+namespace {
+
+struct FolderType {
+    const char* folder;
+    const char* type;
+    const char* extension;
+};
+const FolderType FOLDER_TYPES[] = {
+    { "mods", "mod", ".jar" },
+    { "resourcepacks", "resourcepack", ".zip" },
+    { "shaderpacks", "shader", ".zip" },
+    { "datapacks", "datapack", ".zip" },
+};
+
+const QStringList CONFIG_EXTENSIONS = { "json", "json5", "jsonc", "yml",  "yaml",       "css", "toml",
+                                        "txt",  "ini",   "cfg",   "conf", "properties", "xml", "nbt" };
+
+QString hashFileSha1(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    if (!hash.addData(&file))
+        return {};
+    return QString::fromLatin1(hash.result().toHex());
+}
+
+}  // namespace
+
+ModrinthSharedPublishTask::ModrinthSharedPublishTask(BaseInstance* instance, bool force, std::optional<QString> configSpecOverride)
+    : Task(), m_force(force), m_configSpecOverride(std::move(configSpecOverride))
+{
+    m_instance = dynamic_cast<MinecraftInstance*>(instance);
+}
+
+void ModrinthSharedPublishTask::executeTask()
+{
+    if (!m_instance) {
+        emitFailed(tr("Only Minecraft instances can be shared."));
+        return;
+    }
+    if (!ModrinthShared::isSignedIn()) {
+        emitFailed(tr("You are not signed in to Modrinth."));
+        return;
+    }
+    ModrinthShared::refreshSessionIfNeeded(this);
+
+    auto existing = ModrinthShared::Attachment::load(m_instance->instanceRoot());
+    m_hasAttachment = existing.has_value();
+    if (m_hasAttachment) {
+        m_attachment = *existing;
+        if (!m_attachment.isOwner()) {
+            emitFailed(tr("Only the owner of a shared instance can push updates."));
+            return;
+        }
+    }
+    if (m_configSpecOverride)
+        m_attachment.configSpec = *m_configSpecOverride;
+
+    auto profile = m_instance->getPackProfile();
+    const ComponentPtr minecraft = profile->getComponent("net.minecraft");
+    if (!minecraft) {
+        emitFailed(tr("Could not determine the Minecraft version of this instance."));
+        return;
+    }
+    m_gameVersion = minecraft->m_version;
+    m_loader = "vanilla";
+    m_loaderVersion = "";
+    const struct {
+        const char* uid;
+        const char* name;
+    } loaders[] = {
+        { "net.fabricmc.fabric-loader", "fabric" },
+        { "org.quiltmc.quilt-loader", "quilt" },
+        { "net.minecraftforge", "forge" },
+        { "net.neoforged", "neoforge" },
+    };
+    for (const auto& loader : loaders) {
+        if (const ComponentPtr component = profile->getComponent(QString::fromUtf8(loader.uid))) {
+            m_loader = QString::fromUtf8(loader.name);
+            m_loaderVersion = component->m_version;
+            break;
+        }
+    }
+
+    setStatus(tr("Scanning instance content…"));
+    setProgress(1, 6);
+    scanContent();
+
+    m_pendingHashes.clear();
+    for (const auto& file : m_files)
+        m_pendingHashes.append(file.sha1);
+
+    setStatus(tr("Matching files against Modrinth…"));
+    setProgress(2, 6);
+    m_hashChunkIndex = 0;
+    classifyNextChunk();
+}
+
+void ModrinthSharedPublishTask::scanContent()
+{
+    const QString gameRoot = m_instance->gameRoot();
+    m_files.clear();
+    for (const auto& folderType : FOLDER_TYPES) {
+        QDir dir(FS::PathCombine(gameRoot, folderType.folder));
+        if (!dir.exists())
+            continue;
+        for (const auto& info : dir.entryInfoList(QDir::Files)) {
+            const QString name = info.fileName();
+            if (name.endsWith(".disabled", Qt::CaseInsensitive))
+                continue;
+            if (!name.endsWith(folderType.extension, Qt::CaseInsensitive))
+                continue;
+            ContentFile file;
+            file.fileName = name;
+            file.absPath = info.absoluteFilePath();
+            file.type = folderType.type;
+            file.size = info.size();
+            file.sha1 = hashFileSha1(file.absPath);
+            if (!file.sha1.isEmpty())
+                m_files.append(file);
+        }
+    }
+
+    // Config selection
+    m_configPaths.clear();
+    const QString spec = m_attachment.configSpec;
+    if (!spec.isEmpty() && spec != QLatin1String("none")) {
+        const QString configRoot = FS::PathCombine(gameRoot, "config");
+        QStringList allConfigs;
+        QDirIterator it(configRoot, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            const auto info = it.fileInfo();
+            if (!CONFIG_EXTENSIONS.contains(info.suffix().toLower()))
+                continue;
+            if (info.size() > 16 * 1024 * 1024)
+                continue;
+            QString rel = QDir(configRoot).relativeFilePath(info.absoluteFilePath());
+            allConfigs.append(rel.replace('\\', '/'));
+        }
+        allConfigs.sort();
+        if (spec == QLatin1String("all")) {
+            m_configPaths = allConfigs;
+        } else {
+            const QStringList prefixes = spec.split(',', Qt::SkipEmptyParts);
+            for (const auto& rel : allConfigs) {
+                for (auto prefix : prefixes) {
+                    prefix = prefix.trimmed();
+                    if (!prefix.isEmpty() && rel.startsWith(prefix, Qt::CaseInsensitive)) {
+                        m_configPaths.append(rel);
+                        break;
+                    }
+                }
+            }
+        }
+        if (m_configPaths.size() > 4096)
+            m_configPaths = m_configPaths.mid(0, 4096);
+    }
+}
+
+void ModrinthSharedPublishTask::classifyNextChunk()
+{
+    constexpr int CHUNK = 500;
+    if (m_hashChunkIndex * CHUNK >= m_pendingHashes.size()) {
+        afterClassify();
+        return;
+    }
+    const QStringList chunk = m_pendingHashes.mid(m_hashChunkIndex * CHUNK, CHUNK);
+    m_hashChunkIndex++;
+    ModrinthShared::lookupVersionFiles(this, chunk, [this](const ModrinthShared::Response& res) {
+        if (!res.ok) {
+            emitFailed(res.error);
+            return;
+        }
+        const auto found = res.json.object();
+        for (auto& file : m_files) {
+            if (file.versionId.isEmpty() && found.contains(file.sha1))
+                file.versionId = found.value(file.sha1).toObject().value("id").toString();
+        }
+        classifyNextChunk();
+    });
+}
+
+void ModrinthSharedPublishTask::afterClassify()
+{
+    m_modrinthIds.clear();
+    m_externalFiles.clear();
+    QSet<QString> seenIds;
+    for (const auto& file : m_files) {
+        if (!file.versionId.isEmpty()) {
+            if (!seenIds.contains(file.versionId)) {
+                seenIds.insert(file.versionId);
+                m_modrinthIds.append(file.versionId);
+            }
+        } else {
+            m_externalFiles.append(file);
+        }
+    }
+
+    const QString signature = computeSignature();
+    if (!m_force && m_hasAttachment && signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
+        setStatus(tr("Everything is already up to date."));
+        m_pushed = false;
+        m_pushedVersion = m_attachment.appliedVersion;
+        emitSucceeded();
+        return;
+    }
+
+    setProgress(3, 6);
+    ensureRemoteInstance([this]() { createRemoteVersion(); });
+}
+
+void ModrinthSharedPublishTask::ensureRemoteInstance(std::function<void()> next)
+{
+    if (m_hasAttachment) {
+        ModrinthShared::renameRemoteInstance(this, m_attachment.id, m_instance->name(),
+                                             [next](const ModrinthShared::Response&) { next(); });
+        return;
+    }
+    setStatus(tr("Creating the shared instance on Modrinth…"));
+    ModrinthShared::createRemoteInstance(this, m_instance->name(), [this, next](const ModrinthShared::Response& res) {
+        if (!res.ok) {
+            emitFailed(res.error);
+            return;
+        }
+        auto obj = res.json.object();
+        QString id = obj.value("id").toString();
+        if (id.isEmpty())
+            id = obj.value("instance_id").toString();
+        if (id.isEmpty()) {
+            emitFailed(tr("The shared-instances service returned no instance id."));
+            return;
+        }
+        m_attachment.id = id;
+        m_attachment.role = "owner";
+        m_attachment.appliedVersion = -1;
+        m_hasAttachment = true;
+        m_attachment.save(m_instance->instanceRoot());
+        next();
+    });
+}
+
+void ModrinthSharedPublishTask::createRemoteVersion()
+{
+    setStatus(tr("Publishing content list…"));
+    setProgress(4, 6);
+
+    QJsonArray externalData;
+    for (const auto& file : m_externalFiles) {
+        QJsonObject obj;
+        obj["file_name"] = file.fileName;
+        obj["file_type"] = file.type;
+        externalData.append(obj);
+    }
+    if (!m_configPaths.isEmpty()) {
+        QJsonObject obj;
+        obj["file_name"] = "configs.zip";
+        obj["file_type"] = "configs";
+        externalData.append(obj);
+    }
+
+    QJsonObject payload;
+    payload["modrinth_ids"] = QJsonArray::fromStringList(m_modrinthIds);
+    payload["external_files"] = externalData;
+    payload["modpack_id"] = QJsonValue::Null;
+    payload["game_version"] = m_gameVersion;
+    payload["loader"] = m_loader;
+    payload["loader_version"] = m_loaderVersion;
+
+    ModrinthShared::createVersion(this, m_attachment.id, payload, [this](const ModrinthShared::Response& res) {
+        if (!res.ok) {
+            emitFailed(res.error);
+            return;
+        }
+        auto obj = res.json.object();
+        m_newVersion = obj.value("version").toInt(-1);
+        m_uploads = obj.value("external_files").toArray();
+        m_uploadIndex = 0;
+        setProgress(5, 6);
+        uploadNext();
+    });
+}
+
+void ModrinthSharedPublishTask::uploadNext()
+{
+    if (m_uploadIndex >= m_uploads.size()) {
+        finish(m_newVersion);
+        return;
+    }
+    const auto upload = m_uploads[m_uploadIndex++].toObject();
+    const QString fileName = upload.value("file_name").toString();
+    const QString fileType = upload.value("file_type").toString();
+    const QUrl url(upload.value("url").toString());
+
+    QByteArray bytes;
+    if (fileType == QLatin1String("configs")) {
+        bytes = buildConfigBundle();
+        if (bytes.isEmpty()) {
+            emitFailed(tr("Could not build the config bundle."));
+            return;
+        }
+    } else {
+        const ContentFile* candidate = nullptr;
+        for (const auto& file : m_externalFiles) {
+            if (file.fileName == fileName && file.type == fileType) {
+                candidate = &file;
+                break;
+            }
+        }
+        if (!candidate) {
+            uploadNext();  // service asked for something we do not have; skip
+            return;
+        }
+        QFile file(candidate->absPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            emitFailed(tr("Could not read %1 for upload.").arg(fileName));
+            return;
+        }
+        bytes = file.readAll();
+    }
+
+    setStatus(tr("Uploading %1 (%2)…").arg(fileName, QString::number(bytes.size() / 1024) + " KB"));
+    ModrinthShared::uploadBytes(this, url, bytes, [this, fileName](const ModrinthShared::Response& res) {
+        if (!res.ok) {
+            emitFailed(tr("Uploading %1 failed: %2").arg(fileName, res.error));
+            return;
+        }
+        uploadNext();
+    });
+}
+
+void ModrinthSharedPublishTask::finish(int version)
+{
+    m_attachment.appliedVersion = version;
+    m_attachment.lastPushSignature = computeSignature();
+    m_attachment.save(m_instance->instanceRoot());
+    m_pushed = true;
+    m_pushedVersion = version;
+    setProgress(6, 6);
+    setStatus(tr("Pushed version %1.").arg(version));
+    emitSucceeded();
+}
+
+QString ModrinthSharedPublishTask::computeSignature() const
+{
+    QStringList parts;
+    QStringList ids = m_modrinthIds;
+    ids.sort();
+    parts << "ids:" + ids.join(',');
+    QStringList externals;
+    for (const auto& file : m_externalFiles)
+        externals.append(file.fileName + ':' + file.type + ':' + file.sha1);
+    externals.sort();
+    parts << "ext:" + externals.join(',');
+    QStringList configs;
+    for (const auto& rel : m_configPaths) {
+        const QString abs = FS::PathCombine(m_instance->gameRoot(), "config", rel);
+        configs.append(rel + ':' + hashFileSha1(abs));
+    }
+    configs.sort();
+    parts << "cfg:" + configs.join(',');
+    parts << "env:" + m_gameVersion + '/' + m_loader + '/' + m_loaderVersion;
+    return QString::fromLatin1(
+        QCryptographicHash::hash(parts.join('\n').toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QByteArray ModrinthSharedPublishTask::buildConfigBundle()
+{
+    QTemporaryDir tempDir;
+    if (!tempDir.isValid())
+        return {};
+    const QString zipPath = FS::PathCombine(tempDir.path(), "configs.zip");
+    const QString configRoot = FS::PathCombine(m_instance->gameRoot(), "config");
+    {
+        MMCZip::ArchiveWriter writer(zipPath);
+        if (!writer.open())
+            return {};
+        for (const auto& rel : m_configPaths) {
+            if (!writer.addFile(FS::PathCombine(configRoot, rel), rel))
+                return {};
+        }
+        if (!writer.close())
+            return {};
+    }
+    QFile zip(zipPath);
+    if (!zip.open(QIODevice::ReadOnly))
+        return {};
+    return zip.readAll();
+}
