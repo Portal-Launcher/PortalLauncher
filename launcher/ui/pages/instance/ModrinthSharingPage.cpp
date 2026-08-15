@@ -110,8 +110,10 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
         box->addWidget(m_memberInfoLabel);
         auto* row = new QHBoxLayout();
         m_syncButton = new QPushButton(tr("Check for updates now"), m_memberBox);
+        m_changesButton = new QPushButton(tr("What changed last update?"), m_memberBox);
         m_leaveButton = new QPushButton(tr("Leave shared pack"), m_memberBox);
         row->addWidget(m_syncButton);
+        row->addWidget(m_changesButton);
         row->addStretch(1);
         row->addWidget(m_leaveButton);
         box->addLayout(row);
@@ -128,6 +130,15 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
     connect(m_autoPushCheck, &QCheckBox::toggled, this, &ModrinthSharingPage::toggleAutoPush);
     connect(m_configsCombo, QOverload<int>::of(&QComboBox::activated), this, &ModrinthSharingPage::configSpecChanged);
     connect(m_syncButton, &QPushButton::clicked, this, &ModrinthSharingPage::syncNow);
+    connect(m_changesButton, &QPushButton::clicked, this, [this]() {
+        auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
+        if (!attachment || attachment->lastChangeLog.isEmpty()) {
+            QMessageBox::information(this, tr("Last update"), tr("No update has been applied yet."));
+            return;
+        }
+        QMessageBox::information(this, tr("Changes in version %1").arg(attachment->lastChangeVersion),
+                                 attachment->lastChangeLog.join('\n'));
+    });
     connect(m_stopButton, &QPushButton::clicked, this, &ModrinthSharingPage::stopSharing);
     connect(m_leaveButton, &QPushButton::clicked, this, &ModrinthSharingPage::leaveShare);
 

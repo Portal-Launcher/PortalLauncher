@@ -26,9 +26,17 @@ class FriendsPanel : public QDockWidget {
     void addFriendClicked();
     void showContextMenu(const QPoint& pos);
     void itemDoubleClicked(QTreeWidgetItem* item, int column);
+    void reloadInvites();
 
    private:
     void acceptRequest(const QString& userId, const QString& username);
+    void joinInvite(const QString& instanceId, const QString& instanceName);
+
+    struct Invite {
+        QString instanceId;
+        QString instanceName;
+    };
+    QList<Invite> m_invites;
 
     QLabel* m_headerLabel;
     QPushButton* m_signInButton;

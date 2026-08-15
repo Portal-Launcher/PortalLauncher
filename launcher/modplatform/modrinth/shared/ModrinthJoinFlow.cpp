@@ -64,4 +64,43 @@ void runJoinFlow(QWidget* parent,
     });
 }
 
+void fetchPendingInvites(QObject* ctx, std::function<void(const QList<PendingInvite>&)> done)
+{
+    if (!isSignedIn()) {
+        done({});
+        return;
+    }
+    getNotifications(ctx, [done](const Response& res) {
+        if (!res.ok || !res.json.isArray()) {
+            done({});
+            return;
+        }
+        QSet<QString> joined;
+        auto* instances = APPLICATION->instances();
+        for (int i = 0; i < instances->count(); i++) {
+            if (auto att = Attachment::load(instances->at(i)->instanceRoot()))
+                joined.insert(att->id);
+        }
+        QList<PendingInvite> invites;
+        QSet<QString> seen;
+        for (const auto& value : res.json.array()) {
+            const auto notification = value.toObject();
+            const auto body = notification.value("body").toObject();
+            const QString type = body.value("type").toString(notification.value("type").toString());
+            if (type != QLatin1String("shared_instance_invite"))
+                continue;
+            PendingInvite invite;
+            invite.instanceId = body.value("shared_instance_id").toString();
+            invite.instanceName = body.value("shared_instance_name").toString();
+            if (invite.instanceName.trimmed().isEmpty())
+                invite.instanceName = QObject::tr("Shared pack");
+            if (invite.instanceId.isEmpty() || joined.contains(invite.instanceId) || seen.contains(invite.instanceId))
+                continue;
+            seen.insert(invite.instanceId);
+            invites.append(invite);
+        }
+        done(invites);
+    });
+}
+
 }  // namespace ModrinthShared

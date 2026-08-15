@@ -4,6 +4,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 
 #include "Application.h"
@@ -251,22 +252,61 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         m_targets.append(target);
     }
 
-    // Delete previously managed files that are gone from the share.
+    // Human-readable changelog for this update (shown before playing and kept
+    // on the Sharing page). Pretty names come from the resolved version data.
+    QHash<QString, QString> titleByProject;
+    for (const auto& value : m_resolvedProjects) {
+        const auto obj = value.toObject();
+        titleByProject[obj.value("id").toString()] = obj.value("title").toString();
+    }
+    QHash<QString, QString> prettyBySource;
+    for (const auto& value : m_resolvedVersions) {
+        const auto version = value.toObject();
+        QString pretty = titleByProject.value(version.value("project_id").toString());
+        const QString number = version.value("version_number").toString();
+        if (pretty.isEmpty())
+            pretty = version.value("name").toString();
+        if (!number.isEmpty())
+            pretty += ' ' + number;
+        prettyBySource["modrinth:" + version.value("id").toString()] = pretty.trimmed();
+    }
+
     const QString gameRoot = m_instance->gameRoot();
     QSet<QString> targetRels;
     for (const auto& target : m_targets)
         targetRels.insert(target.rel);
+
+    QHash<QString, ModrinthShared::ManagedFile> oldByRel;
+    for (const auto& old : m_attachment.managedFiles)
+        oldByRel[old.rel] = old;
+
+    m_changeLog.clear();
+    const bool firstInstall = m_attachment.appliedVersion < 0;
+    if (!firstInstall) {
+        for (const auto& target : m_targets) {
+            const QString pretty = prettyBySource.value(target.source, QFileInfo(target.rel).fileName());
+            if (!oldByRel.contains(target.rel))
+                m_changeLog.append(tr("Added: %1").arg(pretty));
+            else if (!target.sha1.isEmpty() && oldByRel[target.rel].sha1 != target.sha1)
+                m_changeLog.append(tr("Updated: %1").arg(pretty));
+            else if (target.sha1.isEmpty() && target.size >= 0 && oldByRel[target.rel].size != target.size)
+                m_changeLog.append(tr("Updated: %1").arg(pretty));
+        }
+        for (const auto& old : m_attachment.managedFiles) {
+            if (!targetRels.contains(old.rel))
+                m_changeLog.append(tr("Removed: %1").arg(QFileInfo(old.rel).fileName()));
+        }
+        if (!m_configBundleUrl.isEmpty())
+            m_changeLog.append(tr("Shared config files updated"));
+    }
+
+    // Delete previously managed files that are gone from the share.
     for (const auto& old : m_attachment.managedFiles) {
         if (targetRels.contains(old.rel))
             continue;
         if (!QFile::remove(FS::PathCombine(gameRoot, old.rel)))
             QFile::remove(FS::PathCombine(gameRoot, old.rel + ".disabled"));
     }
-
-    // Queue downloads for new/changed files, honoring locally disabled copies.
-    QHash<QString, ModrinthShared::ManagedFile> oldByRel;
-    for (const auto& old : m_attachment.managedFiles)
-        oldByRel[old.rel] = old;
 
     m_downloadJob = makeShared<NetJob>(tr("Shared pack update"), APPLICATION->network(), 6);
     int queued = 0;
@@ -396,8 +436,10 @@ void ModrinthSharedSyncTask::finish()
     const QString loader = m_remoteVersion.value("loader").toString();
     const QString loaderVersion = m_remoteVersion.value("loader_version").toString();
     auto profile = m_instance->getPackProfile();
-    if (!gameVersion.isEmpty() && profile->getComponentVersion("net.minecraft") != gameVersion)
+    if (!gameVersion.isEmpty() && profile->getComponentVersion("net.minecraft") != gameVersion) {
+        m_changeLog.append(tr("Minecraft: %1 to %2").arg(profile->getComponentVersion("net.minecraft"), gameVersion));
         profile->setComponentVersion("net.minecraft", gameVersion, true);
+    }
     const QHash<QString, QString> loaderUids = {
         { "fabric", "net.fabricmc.fabric-loader" },
         { "quilt", "org.quiltmc.quilt-loader" },
@@ -406,12 +448,18 @@ void ModrinthSharedSyncTask::finish()
     };
     if (loaderUids.contains(loader) && !loaderVersion.isEmpty()) {
         const QString uid = loaderUids[loader];
-        if (profile->getComponent(uid) && profile->getComponentVersion(uid) != loaderVersion)
+        if (profile->getComponent(uid) && profile->getComponentVersion(uid) != loaderVersion) {
+            m_changeLog.append(tr("%1 loader: %2 to %3").arg(loader, profile->getComponentVersion(uid), loaderVersion));
             profile->setComponentVersion(uid, loaderVersion);
+        }
     }
     profile->saveNow();
 
     m_attachment.appliedVersion = m_remoteVersion.value("version").toInt(-1);
+    if (!m_changeLog.isEmpty()) {
+        m_attachment.lastChangeLog = m_changeLog;
+        m_attachment.lastChangeVersion = m_attachment.appliedVersion;
+    }
     m_attachment.save(m_instance->instanceRoot());
     m_updated = true;
     setStatus(tr("Shared pack updated to version %1.").arg(m_attachment.appliedVersion));

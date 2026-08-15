@@ -84,5 +84,6 @@ class ModrinthSharingPage : public QWidget, public BasePage {
     QGroupBox* m_memberBox;
     QLabel* m_memberInfoLabel;
     QPushButton* m_syncButton;
+    QPushButton* m_changesButton;
     QPushButton* m_leaveButton;
 };

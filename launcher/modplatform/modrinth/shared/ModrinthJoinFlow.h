@@ -25,4 +25,12 @@ void runJoinFlow(QWidget* parent,
                  const QString& instanceName,
                  std::function<void(bool joined, const QString& message)> done);
 
+struct PendingInvite {
+    QString instanceId;
+    QString instanceName;
+};
+
+/** Pending shared-pack invites for this account, minus packs already joined. */
+void fetchPendingInvites(QObject* ctx, std::function<void(const QList<PendingInvite>&)> done);
+
 }  // namespace ModrinthShared

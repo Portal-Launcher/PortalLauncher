@@ -88,6 +88,7 @@ void createInvite(QObject* ctx, const QString& id, int maxAgeSeconds, int maxUse
 void getInviteInfo(QObject* ctx, const QString& inviteId, Callback cb);  // unauthenticated
 void acceptInvite(QObject* ctx, const QString& instanceId, const QString& inviteId, Callback cb);
 void acceptPendingInvite(QObject* ctx, const QString& instanceId, Callback cb);
+void declinePendingInvite(QObject* ctx, const QString& instanceId, Callback cb);
 
 QString inviteLink(const QString& inviteId);
 /** Extracts the invite id from a modrinth.com/share/... link or returns the input unchanged. */

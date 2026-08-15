@@ -30,6 +30,8 @@ class Attachment {
     QString lastPushSignature;  // owner only: content signature of last push
     QString iconSha1;           // sha1 of the last uploaded (owner) / adopted (member) icon
     bool autoPush = false;      // owner only: push automatically before launching
+    QStringList lastChangeLog;  // member: human-readable summary of the last applied update
+    int lastChangeVersion = -1;
     QList<ManagedFile> managedFiles;
     QStringList managedConfigs;
 

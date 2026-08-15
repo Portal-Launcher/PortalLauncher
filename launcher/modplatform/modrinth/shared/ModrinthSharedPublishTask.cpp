@@ -304,18 +304,29 @@ void ModrinthSharedPublishTask::createRemoteVersion()
         m_newVersion = obj.value("version").toInt(-1);
         m_uploads = obj.value("external_files").toArray();
         m_uploadIndex = 0;
-        setProgress(5, 6);
-        uploadNext();
+        m_activeUploads = 0;
+        m_uploadedCount = 0;
+        m_uploadFailed = false;
+        setProgress(0, qMax(1, static_cast<int>(m_uploads.size())));
+        pumpUploads();
     });
 }
 
-void ModrinthSharedPublishTask::uploadNext()
+void ModrinthSharedPublishTask::pumpUploads()
 {
-    if (m_uploadIndex >= m_uploads.size()) {
-        uploadIconIfChanged([this]() { finish(m_newVersion); });
+    // The service asks for every non-Modrinth file on each version; upload a
+    // few at a time so large packs push much faster than one-by-one.
+    constexpr int MAX_CONCURRENT_UPLOADS = 4;
+    if (m_uploadFailed)
         return;
-    }
-    const auto upload = m_uploads[m_uploadIndex++].toObject();
+    while (m_activeUploads < MAX_CONCURRENT_UPLOADS && m_uploadIndex < m_uploads.size())
+        startOneUpload(m_uploads[m_uploadIndex++].toObject());
+    if (m_activeUploads == 0 && m_uploadIndex >= m_uploads.size())
+        uploadIconIfChanged([this]() { finish(m_newVersion); });
+}
+
+void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
+{
     const QString fileName = upload.value("file_name").toString();
     const QString fileType = upload.value("file_type").toString();
     const QUrl url(upload.value("url").toString());
@@ -324,6 +335,7 @@ void ModrinthSharedPublishTask::uploadNext()
     if (fileType == QLatin1String("configs")) {
         bytes = buildConfigBundle();
         if (bytes.isEmpty()) {
+            m_uploadFailed = true;
             emitFailed(tr("Could not build the config bundle."));
             return;
         }
@@ -335,25 +347,31 @@ void ModrinthSharedPublishTask::uploadNext()
                 break;
             }
         }
-        if (!candidate) {
-            uploadNext();  // service asked for something we do not have; skip
-            return;
-        }
+        if (!candidate)
+            return;  // service asked for something we do not have; skip
         QFile file(candidate->absPath);
         if (!file.open(QIODevice::ReadOnly)) {
+            m_uploadFailed = true;
             emitFailed(tr("Could not read %1 for upload.").arg(fileName));
             return;
         }
         bytes = file.readAll();
     }
 
-    setStatus(tr("Uploading %1 (%2)…").arg(fileName, QString::number(bytes.size() / 1024) + " KB"));
+    m_activeUploads++;
+    setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
     ModrinthShared::uploadBytes(this, url, bytes, [this, fileName](const ModrinthShared::Response& res) {
+        m_activeUploads--;
+        if (m_uploadFailed)
+            return;
         if (!res.ok) {
+            m_uploadFailed = true;
             emitFailed(tr("Uploading %1 failed: %2").arg(fileName, res.error));
             return;
         }
-        uploadNext();
+        m_uploadedCount++;
+        setProgress(m_uploadedCount, qMax(1, static_cast<int>(m_uploads.size())));
+        pumpUploads();
     });
 }
 

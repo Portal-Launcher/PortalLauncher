@@ -419,6 +419,20 @@ void acceptPendingInvite(QObject* ctx, const QString& instanceId, Callback cb)
             Auth::ServiceBearer, std::move(cb));
 }
 
+void declinePendingInvite(QObject* ctx, const QString& instanceId, Callback cb)
+{
+    request(ctx, "DELETE", serviceUrl("/instances/" + instanceId + "/invites/pending"), QByteArray(), QByteArray(),
+            Auth::ServiceBearer, [cb](const Response& res) {
+                if (!res.ok && res.status == 404) {
+                    Response tolerated = res;
+                    tolerated.ok = true;
+                    cb(tolerated);
+                    return;
+                }
+                cb(res);
+            });
+}
+
 QString inviteLink(const QString& inviteId)
 {
     return siteUrl() + "/share/" + QString::fromUtf8(QUrl::toPercentEncoding(inviteId));

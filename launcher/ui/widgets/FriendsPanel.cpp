@@ -7,12 +7,13 @@
 #include <QVBoxLayout>
 
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
+#include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 
 namespace {
-enum ItemRole { UserIdRole = Qt::UserRole, UsernameRole, IncomingRole, AcceptedRole };
+enum ItemRole { UserIdRole = Qt::UserRole, UsernameRole, IncomingRole, AcceptedRole, InviteIdRole, InviteNameRole };
 }
 
 FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
@@ -61,6 +62,7 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this, &FriendsPanel::showContextMenu);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this, &FriendsPanel::itemDoubleClicked);
     connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, &FriendsPanel::rebuild);
+    connect(ModrinthFriends::get(), &ModrinthFriends::inviteNotification, this, &FriendsPanel::reloadInvites);
 
     rebuild();
 }
@@ -71,7 +73,18 @@ void FriendsPanel::showEvent(QShowEvent* event)
     if (ModrinthShared::isSignedIn()) {
         ModrinthFriends::get()->ensureConnected();
         ModrinthFriends::get()->refresh();
+        reloadInvites();
     }
+}
+
+void FriendsPanel::reloadInvites()
+{
+    ModrinthShared::fetchPendingInvites(this, [this](const QList<ModrinthShared::PendingInvite>& invites) {
+        m_invites.clear();
+        for (const auto& invite : invites)
+            m_invites.append({ invite.instanceId, invite.instanceName });
+        rebuild();
+    });
 }
 
 void FriendsPanel::rebuild()
@@ -100,10 +113,19 @@ void FriendsPanel::rebuild()
         return section;
     };
 
+    QTreeWidgetItem* invites = nullptr;
     QTreeWidgetItem* online = nullptr;
     QTreeWidgetItem* offline = nullptr;
     QTreeWidgetItem* requests = nullptr;
     QTreeWidgetItem* sent = nullptr;
+
+    for (const auto& invite : m_invites) {
+        if (!invites)
+            invites = makeSection(tr("Modpack invites"));
+        auto* item = new QTreeWidgetItem(invites, { tr("%1 (double-click to join)").arg(invite.instanceName) });
+        item->setData(0, InviteIdRole, invite.instanceId);
+        item->setData(0, InviteNameRole, invite.instanceName);
+    }
 
     for (const auto& f : friends) {
         QTreeWidgetItem* parent = nullptr;
@@ -140,9 +162,9 @@ void FriendsPanel::rebuild()
             item->setForeground(0, QBrush(QColor(0x1b, 0xd9, 0x6a)));
     }
 
-    // Keep section order: requests first, then online, offline, sent.
+    // Keep section order: invites and requests first, then online, offline, sent.
     QList<QTreeWidgetItem*> order;
-    for (auto* section : { requests, online, offline, sent })
+    for (auto* section : { invites, requests, online, offline, sent })
         if (section)
             order.append(section);
     for (int i = 0; i < order.size(); i++) {
@@ -181,10 +203,45 @@ void FriendsPanel::acceptRequest(const QString& userId, const QString& username)
 
 void FriendsPanel::itemDoubleClicked(QTreeWidgetItem* item, int)
 {
-    if (!item || item->data(0, UserIdRole).toString().isEmpty())
+    if (!item)
+        return;
+    const QString inviteId = item->data(0, InviteIdRole).toString();
+    if (!inviteId.isEmpty()) {
+        joinInvite(inviteId, item->data(0, InviteNameRole).toString());
+        return;
+    }
+    if (item->data(0, UserIdRole).toString().isEmpty())
         return;
     if (item->data(0, IncomingRole).toBool())
         acceptRequest(item->data(0, UserIdRole).toString(), item->data(0, UsernameRole).toString());
+}
+
+void FriendsPanel::joinInvite(const QString& instanceId, const QString& instanceName)
+{
+    if (QMessageBox::question(this, tr("Join \"%1\"?").arg(instanceName),
+                              tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are not "
+                                 "reviewed by Modrinth - only accept invites from people you trust.")
+                                  .arg(instanceName)) != QMessageBox::Yes)
+        return;
+    ModrinthShared::acceptPendingInvite(this, instanceId, [this, instanceId, instanceName](const ModrinthShared::Response& res) {
+        if (!res.ok && res.status != 404) {
+            QMessageBox::warning(this, tr("Join failed"), res.error);
+            return;
+        }
+        ModrinthShared::runJoinFlow(this, instanceId, instanceName,
+                                    [this, instanceName](bool joined, const QString& message) {
+                                        if (!joined) {
+                                            QMessageBox::warning(this, tr("Join failed"), message);
+                                        } else {
+                                            QMessageBox::information(
+                                                this, tr("Joined!"),
+                                                tr("\"%1\" is now in your instance list. It checks for the owner's "
+                                                   "updates every time you press Play.")
+                                                    .arg(instanceName));
+                                        }
+                                        reloadInvites();
+                                    });
+    });
 }
 
 void FriendsPanel::showContextMenu(const QPoint& pos)
@@ -192,6 +249,18 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
     auto* item = m_tree->itemAt(pos);
     if (!item)
         return;
+    const QString inviteId = item->data(0, InviteIdRole).toString();
+    if (!inviteId.isEmpty()) {
+        const QString inviteName = item->data(0, InviteNameRole).toString();
+        QMenu inviteMenu(this);
+        inviteMenu.addAction(tr("Join"), this, [this, inviteId, inviteName]() { joinInvite(inviteId, inviteName); });
+        inviteMenu.addAction(tr("Decline"), this, [this, inviteId]() {
+            ModrinthShared::declinePendingInvite(this, inviteId,
+                                                 [this](const ModrinthShared::Response&) { reloadInvites(); });
+        });
+        inviteMenu.exec(m_tree->viewport()->mapToGlobal(pos));
+        return;
+    }
     const QString userId = item->data(0, UserIdRole).toString();
     if (userId.isEmpty())
         return;

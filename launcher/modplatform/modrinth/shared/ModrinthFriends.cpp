@@ -185,6 +185,12 @@ void ModrinthFriends::onTextMessage(const QString& message)
         emit changed();
     } else if (type == QLatin1String("friend_request") || type == QLatin1String("friend_request_rejected")) {
         refresh();
+    } else if (type.isEmpty() && obj.contains("body")) {
+        // Notification payloads (e.g. shared-pack invites) are also pushed
+        // over this socket by the server.
+        const QString bodyType = obj.value("body").toObject().value("type").toString();
+        if (bodyType == QLatin1String("shared_instance_invite"))
+            emit inviteNotification();
     }
 }
 

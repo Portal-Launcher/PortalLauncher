@@ -49,6 +49,8 @@ class ModrinthFriends : public QObject {
 
    signals:
     void changed();
+    /** A shared-pack invite (or other Modrinth notification) arrived live. */
+    void inviteNotification();
 
    private slots:
     void onTextMessage(const QString& message);

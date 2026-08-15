@@ -45,7 +45,8 @@ class ModrinthSharedPublishTask : public Task {
     void afterClassify();
     void ensureRemoteInstance(std::function<void()> next);
     void createRemoteVersion();
-    void uploadNext();
+    void pumpUploads();
+    void startOneUpload(const QJsonObject& upload);
     void uploadIconIfChanged(std::function<void()> next);
     void finish(int version);
 
@@ -72,6 +73,9 @@ class ModrinthSharedPublishTask : public Task {
 
     QJsonArray m_uploads;  // external_files from the createVersion response
     int m_uploadIndex = 0;
+    int m_activeUploads = 0;
+    int m_uploadedCount = 0;
+    bool m_uploadFailed = false;
     int m_newVersion = -1;
 
     bool m_pushed = false;

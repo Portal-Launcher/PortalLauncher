@@ -29,6 +29,7 @@ class ModrinthSharedSyncTask : public Task {
     ~ModrinthSharedSyncTask() override = default;
 
     bool updated() const { return m_updated; }
+    QStringList changeLog() const { return m_changeLog; }
     bool abort() override;
 
    protected:
@@ -67,6 +68,7 @@ class ModrinthSharedSyncTask : public Task {
 
     QList<TargetFile> m_targets;
     QString m_configBundleUrl;
+    QStringList m_changeLog;
     QTemporaryDir m_tempDir;
 
     NetJob::Ptr m_downloadJob;

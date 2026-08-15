@@ -1537,6 +1537,21 @@ bool Application::launch(BaseInstance* instance,
                     ProgressDialog syncDialog(m_mainWindow);
                     syncDialog.setSkipButton(true, tr("Skip update"));
                     syncDialog.execWithTask(&syncTask);
+                    if (syncTask.updated() && !syncTask.changeLog().isEmpty()) {
+                        // Show what the owner changed before the game starts.
+                        QMessageBox changesBox(m_mainWindow);
+                        changesBox.setIcon(QMessageBox::Information);
+                        changesBox.setWindowTitle(tr("Shared pack updated"));
+                        changesBox.setText(tr("\"%1\" was updated to the owner's latest version.").arg(instance->name()));
+                        const QStringList log = syncTask.changeLog();
+                        if (log.size() <= 12)
+                            changesBox.setInformativeText(log.join('\n'));
+                        else
+                            changesBox.setInformativeText(
+                                tr("%1 changes were applied. Click \"Show Details\" for the full list.").arg(log.size()));
+                        changesBox.setDetailedText(log.join('\n'));
+                        changesBox.exec();
+                    }
                 } else if (attachment->isOwner() && attachment->autoPush) {
                     ModrinthSharedPublishTask pushTask(instance, /*force*/ false);
                     ProgressDialog pushDialog(m_mainWindow);
