@@ -573,6 +573,8 @@ set(MODRINTH_SOURCES
     modplatform/modrinth/shared/ModrinthSharedSyncTask.h
     modplatform/modrinth/shared/ModrinthSignInTask.cpp
     modplatform/modrinth/shared/ModrinthSignInTask.h
+    updater/ForkUpdater.cpp
+    updater/ForkUpdater.h
 )
 
 set(PACKWIZ_SOURCES

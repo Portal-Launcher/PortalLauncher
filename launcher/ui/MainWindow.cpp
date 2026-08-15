@@ -100,6 +100,8 @@
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ExportInstanceDialog.h"
 #include "ui/dialogs/ModrinthJoinDialog.h"
+#include <QTimer>
+#include "updater/ForkUpdater.h"
 #include "ui/dialogs/ExportPackDialog.h"
 #include "ui/dialogs/IconPickerDialog.h"
 #include "ui/dialogs/ImportResourceDialog.h"
@@ -221,7 +223,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->actionDISCORD->setVisible(!BuildConfig.DISCORD_URL.isEmpty());
         ui->actionREDDIT->setVisible(!BuildConfig.SUBREDDIT_URL.isEmpty());
 
-        ui->actionCheckUpdate->setVisible(APPLICATION->updaterEnabled());
+        ui->actionCheckUpdate->setVisible(APPLICATION->updaterEnabled() || ForkUpdater::available());
 
 #ifndef Q_OS_MAC
         ui->actionAddToPATH->setVisible(false);
@@ -423,6 +425,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         if (updater) {
             connect(updater, &ExternalUpdater::canCheckForUpdatesChanged, this, &MainWindow::updatesAllowedChanged);
         }
+    } else if (ForkUpdater::available()) {
+        connect(ui->actionCheckUpdate, &QAction::triggered, this, &MainWindow::checkForUpdates);
+        // Quiet daily check for new Prism releases, a little after startup.
+        QTimer::singleShot(15000, this, [this]() { ForkUpdater::check(this, /*silent*/ true); });
     }
 
     connect(ui->actionUndoTrashInstance, &QAction::triggered, this, &MainWindow::undoTrashInstance);
@@ -1364,6 +1370,10 @@ void MainWindow::checkForUpdates()
 {
     if (APPLICATION->updaterEnabled()) {
         APPLICATION->triggerUpdateCheck();
+    } else if (ForkUpdater::available()) {
+        // Custom build: updating rebuilds the launcher from the newest Prism
+        // release with the Shared Instances features rebased on top.
+        ForkUpdater::check(this, /*silent*/ false);
     } else {
         qWarning() << "Updater not set up. Cannot check for updates.";
     }
