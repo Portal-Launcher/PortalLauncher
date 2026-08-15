@@ -27,6 +27,7 @@ struct Response {
     int status = 0;
     QString error;
     QJsonDocument json;
+    QByteArray body;
 };
 using Callback = std::function<void(const Response&)>;
 
@@ -65,9 +66,15 @@ void getUsersByIds(QObject* ctx, const QStringList& ids, Callback cb);
 void lookupVersionFiles(QObject* ctx, const QStringList& sha1Hashes, Callback cb);  // POST /version_files
 void getVersionsBulk(QObject* ctx, const QStringList& versionIds, Callback cb);
 void getProjectsBulk(QObject* ctx, const QStringList& projectIds, Callback cb);
+void getNotifications(QObject* ctx, Callback cb);  // GET /user/{id}/notifications
+
+/** Plain unauthenticated GET of a (pre-signed) URL; bytes arrive in Response::body. */
+void fetchBytes(QObject* ctx, const QUrl& url, Callback cb);
 
 // --- Shared-instances service ---
 void createRemoteInstance(QObject* ctx, const QString& name, Callback cb);
+/** GET /instances/{id} → { name, icon (pre-signed URL), quarantine } */
+void getInstanceInfo(QObject* ctx, const QString& id, Callback cb);
 void renameRemoteInstance(QObject* ctx, const QString& id, const QString& name, Callback cb);
 void deleteRemoteInstance(QObject* ctx, const QString& id, Callback cb);
 void getMembers(QObject* ctx, const QString& id, Callback cb);

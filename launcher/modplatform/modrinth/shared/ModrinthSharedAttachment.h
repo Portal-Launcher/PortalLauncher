@@ -28,6 +28,8 @@ class Attachment {
     int appliedVersion = -1;    // last locally applied/pushed version, -1 = none
     QString configSpec;         // "", "all", or comma-separated prefixes
     QString lastPushSignature;  // owner only: content signature of last push
+    QString iconSha1;           // sha1 of the last uploaded (owner) / adopted (member) icon
+    bool autoPush = false;      // owner only: push automatically before launching
     QList<ManagedFile> managedFiles;
     QStringList managedConfigs;
 

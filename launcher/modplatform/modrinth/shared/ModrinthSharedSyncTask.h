@@ -49,6 +49,7 @@ class ModrinthSharedSyncTask : public Task {
     void buildTargetsAndDownload();
     void afterDownloads();
     void applyConfigBundle(std::function<void()> next);
+    void adoptOwnerIcon(std::function<void()> next);
     void finish();
 
     void softOrFail(const QString& message);

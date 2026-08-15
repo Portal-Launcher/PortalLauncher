@@ -1089,8 +1089,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/NewsDialog.h
     ui/dialogs/ModrinthJoinDialog.cpp
     ui/dialogs/ModrinthJoinDialog.h
-    ui/dialogs/ModrinthSharingDialog.cpp
-    ui/dialogs/ModrinthSharingDialog.h
+    ui/pages/instance/ModrinthSharingPage.cpp
+    ui/pages/instance/ModrinthSharingPage.h
     ui/pagedialog/PageDialog.cpp
     ui/pagedialog/PageDialog.h
     ui/dialogs/ProgressDialog.cpp

@@ -146,6 +146,7 @@ void request(QObject* ctx,
         Response out;
         out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         QByteArray data = reply->readAll();
+        out.body = data;
         if (!data.isEmpty()) {
             QJsonParseError parseError{};
             auto doc = QJsonDocument::fromJson(data, &parseError);
@@ -274,14 +275,29 @@ void getProjectsBulk(QObject* ctx, const QStringList& projectIds, Callback cb)
     getJson(ctx, QUrl(apiBase() + "/projects?ids=" + idsQuery(projectIds)), Auth::None, std::move(cb));
 }
 
+void getNotifications(QObject* ctx, Callback cb)
+{
+    getJson(ctx, QUrl(apiBase() + "/user/" + userId() + "/notifications"), Auth::Labrinth, std::move(cb));
+}
+
 // ---------------------------------------------------------------------------
 // Shared-instances service
+
+void fetchBytes(QObject* ctx, const QUrl& url, Callback cb)
+{
+    request(ctx, "GET", url, QByteArray(), QByteArray(), Auth::None, std::move(cb));
+}
 
 void createRemoteInstance(QObject* ctx, const QString& name, Callback cb)
 {
     QJsonObject payload;
     payload["name"] = name;
     sendJson(ctx, "POST", serviceUrl("/instances"), payload, Auth::ServiceBearer, std::move(cb));
+}
+
+void getInstanceInfo(QObject* ctx, const QString& id, Callback cb)
+{
+    getJson(ctx, serviceUrl("/instances/" + id), Auth::ServiceBearer, std::move(cb));
 }
 
 void renameRemoteInstance(QObject* ctx, const QString& id, const QString& name, Callback cb)

@@ -54,6 +54,7 @@
 #include "ui/ViewLogWindow.h"
 
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+#include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/instanceview/AccessibleInstanceView.h"
@@ -1525,13 +1526,20 @@ bool Application::launch(BaseInstance* instance,
         qDebug() << "Cannot launch instances while an update is running. Please try again when updates are completed.";
     } else if (instance->canLaunch()) {
         // Shared instances: joined packs pull the owner's latest changes right
-        // before launch. Failures never block playing (softFail).
-        if (auto attachment = ModrinthShared::Attachment::load(instance->instanceRoot());
-            attachment && attachment->isMember()) {
-            ModrinthSharedSyncTask syncTask(instance, /*softFail*/ true);
-            ProgressDialog syncDialog(m_mainWindow);
-            syncDialog.setSkipButton(true, tr("Skip update"));
-            syncDialog.execWithTask(&syncTask);
+        // before launch; owners with auto-push publish their changes. Failures
+        // never block playing.
+        if (auto attachment = ModrinthShared::Attachment::load(instance->instanceRoot())) {
+            if (attachment->isMember()) {
+                ModrinthSharedSyncTask syncTask(instance, /*softFail*/ true);
+                ProgressDialog syncDialog(m_mainWindow);
+                syncDialog.setSkipButton(true, tr("Skip update"));
+                syncDialog.execWithTask(&syncTask);
+            } else if (attachment->isOwner() && attachment->autoPush) {
+                ModrinthSharedPublishTask pushTask(instance, /*force*/ false);
+                ProgressDialog pushDialog(m_mainWindow);
+                pushDialog.setSkipButton(true, tr("Skip push"));
+                pushDialog.execWithTask(&pushTask);
+            }
         }
         QMutexLocker locker(&m_instanceExtrasMutex);
         auto& extras = m_instanceExtras[instance->id()];

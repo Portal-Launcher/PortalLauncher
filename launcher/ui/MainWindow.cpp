@@ -100,7 +100,6 @@
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ExportInstanceDialog.h"
 #include "ui/dialogs/ModrinthJoinDialog.h"
-#include "ui/dialogs/ModrinthSharingDialog.h"
 #include "ui/dialogs/ExportPackDialog.h"
 #include "ui/dialogs/IconPickerDialog.h"
 #include "ui/dialogs/ImportResourceDialog.h"
@@ -1410,8 +1409,7 @@ void MainWindow::on_actionShareInstance_triggered()
 {
     if (!m_selectedInstance)
         return;
-    ModrinthSharingDialog dialog(this, m_selectedInstance);
-    dialog.exec();
+    APPLICATION->showInstanceWindow(m_selectedInstance, "sharing");
 }
 
 void MainWindow::on_actionJoinSharedPack_triggered()

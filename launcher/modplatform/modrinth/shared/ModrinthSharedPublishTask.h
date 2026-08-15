@@ -9,6 +9,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <functional>
 #include <optional>
 
 #include "ModrinthSharedAttachment.h"
@@ -45,6 +46,7 @@ class ModrinthSharedPublishTask : public Task {
     void ensureRemoteInstance(std::function<void()> next);
     void createRemoteVersion();
     void uploadNext();
+    void uploadIconIfChanged(std::function<void()> next);
     void finish(int version);
 
     QString computeSignature() const;

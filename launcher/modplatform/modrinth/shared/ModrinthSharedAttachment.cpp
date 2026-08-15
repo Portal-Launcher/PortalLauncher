@@ -33,6 +33,8 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
     att.appliedVersion = obj.value("appliedVersion").toInt(-1);
     att.configSpec = obj.value("configSpec").toString();
     att.lastPushSignature = obj.value("lastPushSignature").toString();
+    att.iconSha1 = obj.value("iconSha1").toString();
+    att.autoPush = obj.value("autoPush").toBool(false);
     for (const auto& value : obj.value("managedFiles").toArray()) {
         auto fileObj = value.toObject();
         ManagedFile mf;
@@ -59,6 +61,8 @@ bool Attachment::save(const QString& instanceRoot) const
     obj["appliedVersion"] = appliedVersion;
     obj["configSpec"] = configSpec;
     obj["lastPushSignature"] = lastPushSignature;
+    obj["iconSha1"] = iconSha1;
+    obj["autoPush"] = autoPush;
     QJsonArray files;
     for (const auto& mf : managedFiles) {
         QJsonObject fileObj;

@@ -1,6 +1,7 @@
 #pragma once
 #include <FileSystem.h>
 #include <ui/pages/instance/DataPackPage.h>
+#include <ui/pages/instance/ModrinthSharingPage.h>
 #include "minecraft/MinecraftInstance.h"
 #include "ui/pages/BasePage.h"
 #include "ui/pages/BasePageProvider.h"
@@ -41,6 +42,7 @@ class InstancePageProvider : protected QObject, public BasePageProvider {
         values.append(new TexturePackPage(onesix, onesix->texturePackList()));
         values.append(new ShaderPackPage(onesix, onesix->shaderPackList()));
         values.append(new NotesPage(onesix));
+        values.append(new ModrinthSharingPage(onesix));
         values.append(new WorldListPage(onesix, onesix->worldList()));
         values.append(new ServersPage(onesix));
         values.append(new ScreenshotsPage(FS::PathCombine(onesix->gameRoot(), "screenshots")));

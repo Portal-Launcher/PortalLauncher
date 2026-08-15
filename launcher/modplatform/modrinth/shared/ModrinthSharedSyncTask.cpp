@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ModrinthSharedSyncTask.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 
 #include "Application.h"
+#include "icons/IconList.h"
 #include "FileSystem.h"
 #include "MMCZip.h"
 #include "ModrinthSharedApi.h"
@@ -116,8 +118,12 @@ void ModrinthSharedSyncTask::onLatestVersion(const QJsonObject& version)
         return;
     }
     if (remote == m_attachment.appliedVersion) {
-        setStatus(tr("Shared pack is up to date."));
-        emitSucceeded();
+        // Content unchanged — still mirror an owner icon change.
+        adoptOwnerIcon([this]() {
+            m_attachment.save(m_instance->instanceRoot());
+            setStatus(tr("Shared pack is up to date."));
+            emitSucceeded();
+        });
         return;
     }
 
@@ -307,7 +313,44 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
 
 void ModrinthSharedSyncTask::afterDownloads()
 {
-    applyConfigBundle([this]() { finish(); });
+    applyConfigBundle([this]() { adoptOwnerIcon([this]() { finish(); }); });
+}
+
+void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
+{
+    // Mirror the owner's instance icon locally (best-effort, never fatal).
+    ModrinthShared::getInstanceInfo(this, m_attachment.id, [this, next](const ModrinthShared::Response& res) {
+        const QString iconUrl = res.ok && res.json.isObject() ? res.json.object().value("icon").toString() : QString();
+        if (iconUrl.isEmpty()) {
+            next();
+            return;
+        }
+        ModrinthShared::fetchBytes(this, QUrl(iconUrl), [this, next](const ModrinthShared::Response& iconRes) {
+            if (!iconRes.ok || iconRes.body.isEmpty()) {
+                next();
+                return;
+            }
+            const QString sha1 = QString::fromLatin1(
+                QCryptographicHash::hash(iconRes.body, QCryptographicHash::Sha1).toHex());
+            if (sha1 == m_attachment.iconSha1) {
+                next();
+                return;
+            }
+            const QString iconName = "shared-" + m_attachment.id;
+            if (m_tempDir.isValid()) {
+                const QString tempFile = FS::PathCombine(m_tempDir.path(), iconName + ".png");
+                QFile out(tempFile);
+                if (out.open(QIODevice::WriteOnly)) {
+                    out.write(iconRes.body);
+                    out.close();
+                    APPLICATION->icons()->installIcon(tempFile, iconName + ".png");
+                    m_instance->setIconKey(iconName);
+                    m_attachment.iconSha1 = sha1;
+                }
+            }
+            next();
+        });
+    });
 }
 
 void ModrinthSharedSyncTask::applyConfigBundle(std::function<void()> next)

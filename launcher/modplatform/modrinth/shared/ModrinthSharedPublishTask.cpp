@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ModrinthSharedPublishTask.h"
 
+#include <QBuffer>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QIcon>
 #include <QJsonDocument>
+#include <QPixmap>
 #include <QTemporaryDir>
 
+#include "Application.h"
 #include "FileSystem.h"
+#include "icons/IconList.h"
 #include "ModrinthSharedApi.h"
 #include "archive/ArchiveWriter.h"
 #include "minecraft/Component.h"
@@ -218,10 +223,14 @@ void ModrinthSharedPublishTask::afterClassify()
 
     const QString signature = computeSignature();
     if (!m_force && m_hasAttachment && signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
-        setStatus(tr("Everything is already up to date."));
-        m_pushed = false;
-        m_pushedVersion = m_attachment.appliedVersion;
-        emitSucceeded();
+        // Content unchanged — but the icon may still have changed.
+        uploadIconIfChanged([this]() {
+            m_attachment.save(m_instance->instanceRoot());
+            setStatus(tr("Everything is already up to date."));
+            m_pushed = false;
+            m_pushedVersion = m_attachment.appliedVersion;
+            emitSucceeded();
+        });
         return;
     }
 
@@ -303,7 +312,7 @@ void ModrinthSharedPublishTask::createRemoteVersion()
 void ModrinthSharedPublishTask::uploadNext()
 {
     if (m_uploadIndex >= m_uploads.size()) {
-        finish(m_newVersion);
+        uploadIconIfChanged([this]() { finish(m_newVersion); });
         return;
     }
     const auto upload = m_uploads[m_uploadIndex++].toObject();
@@ -345,6 +354,38 @@ void ModrinthSharedPublishTask::uploadNext()
             return;
         }
         uploadNext();
+    });
+}
+
+void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)
+{
+    // Share the instance icon so friends' copies look the same. Never fails
+    // the push — the icon is cosmetic.
+    QByteArray png;
+    {
+        const QIcon icon = APPLICATION->icons()->getIcon(m_instance->iconKey());
+        const QPixmap pixmap = icon.pixmap(128, 128);
+        if (!pixmap.isNull()) {
+            QBuffer buffer(&png);
+            buffer.open(QIODevice::WriteOnly);
+            pixmap.save(&buffer, "PNG");
+        }
+    }
+    if (png.isEmpty()) {
+        next();
+        return;
+    }
+    const QString sha1 =
+        QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha1).toHex());
+    if (sha1 == m_attachment.iconSha1) {
+        next();
+        return;
+    }
+    setStatus(tr("Uploading the instance icon…"));
+    ModrinthShared::uploadIcon(this, m_attachment.id, png, [this, sha1, next](const ModrinthShared::Response& res) {
+        if (res.ok)
+            m_attachment.iconSha1 = sha1;
+        next();
     });
 }
 
