@@ -69,11 +69,13 @@ void ModrinthFriends::refresh()
                                 for (const auto& value : res.json.array()) {
                                     const auto obj = value.toObject();
                                     Entry entry;
-                                    const QString requesterId = obj.value("id").toString();
-                                    const QString recipientId = obj.value("friend_id").toString();
-                                    entry.userId = requesterId == me ? recipientId : requesterId;
+                                    // Counter-intuitive but per labrinth's UserFriend model:
+                                    // "id" is the RECIPIENT of the request, "friend_id" the SENDER.
+                                    const QString recipientId = obj.value("id").toString();
+                                    const QString senderId = obj.value("friend_id").toString();
+                                    entry.userId = senderId == me ? recipientId : senderId;
                                     entry.accepted = obj.value("accepted").toBool();
-                                    entry.incoming = !entry.accepted && requesterId != me;
+                                    entry.incoming = !entry.accepted && recipientId == me;
                                     if (entry.userId.isEmpty())
                                         continue;
                                     m_entries.append(entry);
