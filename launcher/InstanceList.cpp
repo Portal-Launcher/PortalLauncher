@@ -36,6 +36,8 @@
 
 #include "InstanceList.h"
 
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+
 #include <QDebug>
 #include <QDirIterator>
 #include <QFile>
@@ -181,7 +183,16 @@ QVariant InstanceList::data(const QModelIndex& index, int role) const
             return tr("%1 Instance").arg(pdata->name());
         }
         case Qt::ToolTipRole: {
-            return pdata->instanceRoot();
+            QString tip = pdata->instanceRoot();
+            if (auto attachment = ModrinthShared::Attachment::load(pdata->instanceRoot())) {
+                if (attachment->isOwner())
+                    tip += tr("\nShared with friends (hosting, version %1)")
+                               .arg(attachment->appliedVersion < 0 ? tr("none") : QString::number(attachment->appliedVersion));
+                else
+                    tip += tr("\nShared pack (joined, version %1)")
+                               .arg(attachment->appliedVersion < 0 ? tr("none") : QString::number(attachment->appliedVersion));
+            }
+            return tip;
         }
         case Qt::DecorationRole: {
             return pdata->iconKey();

@@ -100,7 +100,13 @@
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ExportInstanceDialog.h"
 #include "ui/dialogs/ModrinthJoinDialog.h"
+#include <QClipboard>
 #include <QTimer>
+#include <QToolTip>
+#include "modplatform/modrinth/shared/ModrinthFriends.h"
+#include "modplatform/modrinth/shared/ModrinthSharedApi.h"
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+#include "ui/widgets/FriendsPanel.h"
 #include "updater/ForkUpdater.h"
 #include "ui/dialogs/ExportPackDialog.h"
 #include "ui/dialogs/IconPickerDialog.h"
@@ -431,6 +437,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         QTimer::singleShot(15000, this, [this]() { ForkUpdater::check(this, /*silent*/ true); });
     }
 
+    // Modrinth friends panel (who is online, what they are playing).
+    {
+        m_friendsPanel = new FriendsPanel(this);
+        addDockWidget(Qt::RightDockWidgetArea, m_friendsPanel);
+        m_friendsPanel->hide();  // restored by MainWindowState if it was open
+        auto* friendsAction = m_friendsPanel->toggleViewAction();
+        friendsAction->setIcon(QIcon::fromTheme("accounts"));
+        friendsAction->setText(tr("Friends"));
+        friendsAction->setToolTip(tr("Show your Modrinth friends, who is online, and what they are playing."));
+        ui->mainToolBar->addAction(friendsAction);
+        if (ModrinthShared::isSignedIn()) {
+            ModrinthFriends::get()->ensureConnected();
+            ModrinthFriends::get()->refresh();
+        }
+    }
+
     connect(ui->actionUndoTrashInstance, &QAction::triggered, this, &MainWindow::undoTrashInstance);
 
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
@@ -534,6 +556,7 @@ void MainWindow::konamiTriggered()
 
 void MainWindow::showInstanceContextMenu(const QPoint& pos)
 {
+    updateShareQuickActions();
     QList<QAction*> actions;
 
     QAction* actionSep = new QAction("", this);
@@ -1428,6 +1451,34 @@ void MainWindow::on_actionJoinSharedPack_triggered()
     dialog.exec();
 }
 
+void MainWindow::on_actionCopyShareLink_triggered()
+{
+    if (!m_selectedInstance)
+        return;
+    auto attachment = ModrinthShared::Attachment::load(m_selectedInstance->instanceRoot());
+    if (!attachment || !attachment->isOwner())
+        return;
+    ModrinthShared::createInvite(this, attachment->id, 7 * 24 * 3600, 10, [this](const ModrinthShared::Response& res) {
+        if (!res.ok) {
+            QToolTip::showText(QCursor::pos(), tr("Could not create an invite link: %1").arg(res.error), this);
+            return;
+        }
+        const QString link = ModrinthShared::inviteLink(res.json.object().value("id").toString());
+        QApplication::clipboard()->setText(link);
+        QToolTip::showText(QCursor::pos(), tr("Invite link copied to clipboard (7 days, 10 uses)"), this);
+    });
+}
+
+void MainWindow::updateShareQuickActions()
+{
+    bool owner = false;
+    if (m_selectedInstance) {
+        auto attachment = ModrinthShared::Attachment::load(m_selectedInstance->instanceRoot());
+        owner = attachment && attachment->isOwner();
+    }
+    ui->actionCopyShareLink->setVisible(owner);
+}
+
 void MainWindow::on_actionManageAccounts_triggered()
 {
     APPLICATION->ShowGlobalSettings(this, "accounts");
@@ -1693,6 +1744,7 @@ void MainWindow::instanceChanged(const QModelIndex& current, [[maybe_unused]] co
     if (m_selectedInstance) {
         ui->instanceToolBar->setEnabled(true);
         setInstanceActionsEnabled(true);
+        updateShareQuickActions();
         ui->actionLaunchInstance->setEnabled(m_selectedInstance->canLaunch());
 
         ui->actionKillInstance->setEnabled(m_selectedInstance->isRunning());
@@ -1796,6 +1848,7 @@ void MainWindow::setInstanceActionsEnabled(bool enabled)
 {
     ui->actionEditInstance->setEnabled(enabled);
     ui->actionShareInstance->setEnabled(enabled);
+    ui->actionCopyShareLink->setEnabled(enabled);
     ui->actionChangeInstGroup->setEnabled(enabled);
     ui->actionViewSelectedInstFolder->setEnabled(enabled);
     ui->actionExportInstance->setEnabled(enabled);

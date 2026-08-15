@@ -85,7 +85,7 @@ void ModrinthSharedSyncTask::executeTask()
     m_attachment = *att;
 
     if (!ModrinthShared::isSignedIn()) {
-        softOrFail(tr("Not signed in to Modrinth — skipping shared-pack update check."));
+        softOrFail(tr("Not signed in to Modrinth - skipping shared-pack update check."));
         return;
     }
     ModrinthShared::refreshSessionIfNeeded(this);
@@ -114,11 +114,11 @@ void ModrinthSharedSyncTask::onLatestVersion(const QJsonObject& version)
         return;
     }
     if (!version.value("ready").toBool(true)) {
-        softOrFail(tr("The owner's latest push is still uploading — keeping the current version."));
+        softOrFail(tr("The owner's latest push is still uploading - keeping the current version."));
         return;
     }
     if (remote == m_attachment.appliedVersion) {
-        // Content unchanged — still mirror an owner icon change.
+        // Content unchanged - still mirror an owner icon change.
         adoptOwnerIcon([this]() {
             m_attachment.save(m_instance->instanceRoot());
             setStatus(tr("Shared pack is up to date."));

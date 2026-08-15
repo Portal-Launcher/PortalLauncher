@@ -83,7 +83,7 @@ void check(QWidget* parent, bool silent)
             if (!silent)
                 QMessageBox::information(
                     parent, QObject::tr("No updates"),
-                    QObject::tr("You are running the newest Prism Launcher (%1) — with Shared Instances included.")
+                    QObject::tr("You are running the newest Prism Launcher (%1) - with Shared Instances included.")
                         .arg(current.toString()));
             return;
         }
@@ -92,7 +92,7 @@ void check(QWidget* parent, bool silent)
             parent, QObject::tr("Prism Launcher %1 is available").arg(latestTag),
             QObject::tr("You are running Prism Launcher %1. Version %2 is available.\n\n"
                         "Updating rebuilds the launcher from the new Prism release with your Shared Instances "
-                        "features included. This takes roughly 5–20 minutes; the launcher will close now and "
+                        "features included. This takes roughly 5-20 minutes; the launcher will close now and "
                         "reopen automatically when the update is done.\n\nUpdate now?")
                 .arg(current.toString(), latestTag),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);

@@ -53,6 +53,8 @@
 #include "ui/ToolTipFilter.h"
 #include "ui/ViewLogWindow.h"
 
+#include "modplatform/modrinth/shared/ModrinthFriends.h"
+#include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
@@ -1527,18 +1529,20 @@ bool Application::launch(BaseInstance* instance,
     } else if (instance->canLaunch()) {
         // Shared instances: joined packs pull the owner's latest changes right
         // before launch; owners with auto-push publish their changes. Failures
-        // never block playing.
-        if (auto attachment = ModrinthShared::Attachment::load(instance->instanceRoot())) {
-            if (attachment->isMember()) {
-                ModrinthSharedSyncTask syncTask(instance, /*softFail*/ true);
-                ProgressDialog syncDialog(m_mainWindow);
-                syncDialog.setSkipButton(true, tr("Skip update"));
-                syncDialog.execWithTask(&syncTask);
-            } else if (attachment->isOwner() && attachment->autoPush) {
-                ModrinthSharedPublishTask pushTask(instance, /*force*/ false);
-                ProgressDialog pushDialog(m_mainWindow);
-                pushDialog.setSkipButton(true, tr("Skip push"));
-                pushDialog.execWithTask(&pushTask);
+        // never block playing, and nothing runs when signed out.
+        if (ModrinthShared::isSignedIn()) {
+            if (auto attachment = ModrinthShared::Attachment::load(instance->instanceRoot())) {
+                if (attachment->isMember()) {
+                    ModrinthSharedSyncTask syncTask(instance, /*softFail*/ true);
+                    ProgressDialog syncDialog(m_mainWindow);
+                    syncDialog.setSkipButton(true, tr("Skip update"));
+                    syncDialog.execWithTask(&syncTask);
+                } else if (attachment->isOwner() && attachment->autoPush) {
+                    ModrinthSharedPublishTask pushTask(instance, /*force*/ false);
+                    ProgressDialog pushDialog(m_mainWindow);
+                    pushDialog.setSkipButton(true, tr("Skip push"));
+                    pushDialog.execWithTask(&pushTask);
+                }
             }
         }
         QMutexLocker locker(&m_instanceExtrasMutex);
@@ -1564,6 +1568,11 @@ bool Application::launch(BaseInstance* instance,
         }
         connect(controller.get(), &LaunchController::finished, this, &Application::controllerFinished);
         addRunningInstance();
+        // Let Modrinth friends see what we are playing.
+        if (ModrinthShared::isSignedIn()) {
+            ModrinthFriends::get()->ensureConnected();
+            ModrinthFriends::get()->setPlaying(instance->name());
+        }
         QMetaObject::invokeMethod(controller.get(), &Task::start, Qt::QueuedConnection);
         return true;
     } else if (instance->isRunning()) {
@@ -1616,6 +1625,7 @@ void Application::subRunningInstance()
     m_runningInstances--;
     if (m_runningInstances == 0) {
         emit updateAllowedChanged(true);
+        ModrinthFriends::get()->setPlaying(QString());
     }
 }
 

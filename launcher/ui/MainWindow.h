@@ -167,6 +167,7 @@ class MainWindow : public QMainWindow {
 
     void on_actionShareInstance_triggered();
     void on_actionJoinSharedPack_triggered();
+    void on_actionCopyShareLink_triggered();
 
     void on_actionCreateInstanceShortcut_triggered();
 
@@ -251,6 +252,8 @@ class MainWindow : public QMainWindow {
     unique_qobject_ptr<NewsChecker> m_newsChecker;
 
     BaseInstance* m_selectedInstance = nullptr;
+    class FriendsPanel* m_friendsPanel = nullptr;
+    void updateShareQuickActions();
     QString m_currentInstIcon;
 
     // managed by the application object

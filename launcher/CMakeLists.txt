@@ -571,6 +571,10 @@ set(MODRINTH_SOURCES
     modplatform/modrinth/shared/ModrinthSharedPublishTask.h
     modplatform/modrinth/shared/ModrinthSharedSyncTask.cpp
     modplatform/modrinth/shared/ModrinthSharedSyncTask.h
+    modplatform/modrinth/shared/ModrinthFriends.cpp
+    modplatform/modrinth/shared/ModrinthFriends.h
+    modplatform/modrinth/shared/ModrinthJoinFlow.cpp
+    modplatform/modrinth/shared/ModrinthJoinFlow.h
     modplatform/modrinth/shared/ModrinthSignInTask.cpp
     modplatform/modrinth/shared/ModrinthSignInTask.h
     updater/ForkUpdater.cpp
@@ -1093,6 +1097,10 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/ModrinthJoinDialog.h
     ui/pages/instance/ModrinthSharingPage.cpp
     ui/pages/instance/ModrinthSharingPage.h
+    ui/pages/modplatform/SharedPackPage.cpp
+    ui/pages/modplatform/SharedPackPage.h
+    ui/widgets/FriendsPanel.cpp
+    ui/widgets/FriendsPanel.h
     ui/pagedialog/PageDialog.cpp
     ui/pagedialog/PageDialog.h
     ui/dialogs/ProgressDialog.cpp
@@ -1389,6 +1397,7 @@ target_link_libraries(Launcher_logic
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::NetworkAuth
     Qt${QT_VERSION_MAJOR}::OpenGL
+    Qt${QT_VERSION_MAJOR}::WebSockets
     ${Launcher_QT_DBUS}
     ${Launcher_QT_LIBS}
 )

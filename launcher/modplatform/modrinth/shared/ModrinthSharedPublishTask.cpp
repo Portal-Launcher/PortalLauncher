@@ -223,7 +223,7 @@ void ModrinthSharedPublishTask::afterClassify()
 
     const QString signature = computeSignature();
     if (!m_force && m_hasAttachment && signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
-        // Content unchanged — but the icon may still have changed.
+        // Content unchanged - but the icon may still have changed.
         uploadIconIfChanged([this]() {
             m_attachment.save(m_instance->instanceRoot());
             setStatus(tr("Everything is already up to date."));
@@ -360,7 +360,7 @@ void ModrinthSharedPublishTask::uploadNext()
 void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)
 {
     // Share the instance icon so friends' copies look the same. Never fails
-    // the push — the icon is cosmetic.
+    // the push - the icon is cosmetic.
     QByteArray png;
     {
         const QIcon icon = APPLICATION->icons()->getIcon(m_instance->iconKey());

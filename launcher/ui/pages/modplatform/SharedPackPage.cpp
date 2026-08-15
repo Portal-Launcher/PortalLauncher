@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#include "ModrinthJoinDialog.h"
+#include "SharedPackPage.h"
 
-#include <QDialogButtonBox>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMessageBox>
-#include <QShowEvent>
 #include <QVBoxLayout>
 
 #include "Application.h"
@@ -14,17 +12,17 @@
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
+#include "ui/dialogs/NewInstanceDialog.h"
 #include "ui/dialogs/ProgressDialog.h"
 
-ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
+SharedPackPage::SharedPackPage(NewInstanceDialog* dialog, QWidget* parent) : QWidget(parent), m_dialog(dialog)
 {
-    setWindowTitle(tr("Join a shared pack"));
-    setMinimumWidth(560);
-
     auto* layout = new QVBoxLayout(this);
+
     auto* info = new QLabel(
-        tr("Paste the invite link a friend sent you (it looks like <i>modrinth.com/share/…</i>).<br>"
-           "The modpack appears as a normal instance and updates itself whenever they push changes."),
+        tr("Join a modpack a friend shared with you. Paste the invite link they sent (it looks like "
+           "<i>modrinth.com/share/…</i>). The pack installs as a normal instance and pulls the owner's updates "
+           "automatically every time you press Play."),
         this);
     info->setWordWrap(true);
     layout->addWidget(info);
@@ -33,17 +31,15 @@ ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
     m_linkEdit = new QLineEdit(this);
     m_linkEdit->setPlaceholderText(tr("https://modrinth.com/share/…"));
     m_joinButton = new QPushButton(tr("Join"), this);
-    m_joinButton->setDefault(true);
     linkRow->addWidget(m_linkEdit, 1);
     linkRow->addWidget(m_joinButton);
     layout->addLayout(linkRow);
 
     m_invitesLabel = new QLabel(tr("Invites sent to your Modrinth account:"), this);
     m_invitesList = new QListWidget(this);
-    m_invitesList->setMaximumHeight(120);
     m_acceptInviteButton = new QPushButton(tr("Accept selected invite"), this);
     layout->addWidget(m_invitesLabel);
-    layout->addWidget(m_invitesList);
+    layout->addWidget(m_invitesList, 1);
     layout->addWidget(m_acceptInviteButton);
     m_invitesLabel->hide();
     m_invitesList->hide();
@@ -52,19 +48,15 @@ ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
     m_statusLabel = new QLabel(this);
     m_statusLabel->setWordWrap(true);
     layout->addWidget(m_statusLabel);
+    layout->addStretch(0);
 
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
-
-    connect(m_joinButton, &QPushButton::clicked, this, &ModrinthJoinDialog::joinByLink);
-    connect(m_acceptInviteButton, &QPushButton::clicked, this, &ModrinthJoinDialog::acceptSelectedInvite);
-    connect(m_invitesList, &QListWidget::itemDoubleClicked, this, &ModrinthJoinDialog::acceptSelectedInvite);
+    connect(m_joinButton, &QPushButton::clicked, this, &SharedPackPage::joinByLink);
+    connect(m_acceptInviteButton, &QPushButton::clicked, this, &SharedPackPage::acceptSelectedInvite);
+    connect(m_invitesList, &QListWidget::itemDoubleClicked, this, &SharedPackPage::acceptSelectedInvite);
 }
 
-void ModrinthJoinDialog::showEvent(QShowEvent* event)
+void SharedPackPage::openedImpl()
 {
-    QDialog::showEvent(event);
     if (!m_loadedInvites && ModrinthShared::isSignedIn()) {
         m_loadedInvites = true;
         ModrinthShared::refreshSessionIfNeeded(this);
@@ -72,7 +64,7 @@ void ModrinthJoinDialog::showEvent(QShowEvent* event)
     }
 }
 
-bool ModrinthJoinDialog::ensureSignedIn()
+bool SharedPackPage::ensureSignedIn()
 {
     if (ModrinthShared::isSignedIn())
         return true;
@@ -88,7 +80,7 @@ bool ModrinthJoinDialog::ensureSignedIn()
     return true;
 }
 
-void ModrinthJoinDialog::loadPendingInvites()
+void SharedPackPage::loadPendingInvites()
 {
     ModrinthShared::getNotifications(this, [this](const ModrinthShared::Response& res) {
         if (!res.ok || !res.json.isArray())
@@ -123,7 +115,7 @@ void ModrinthJoinDialog::loadPendingInvites()
     });
 }
 
-void ModrinthJoinDialog::joinByLink()
+void SharedPackPage::joinByLink()
 {
     if (!ensureSignedIn())
         return;
@@ -132,7 +124,6 @@ void ModrinthJoinDialog::joinByLink()
         m_statusLabel->setText(tr("Please paste an invite link first."));
         return;
     }
-
     m_joinButton->setEnabled(false);
     m_statusLabel->setText(tr("Looking up the invite…"));
 
@@ -165,12 +156,12 @@ void ModrinthJoinDialog::joinByLink()
                                              m_statusLabel->setText(acceptRes.error);
                                              return;
                                          }
-                                         installShared(instanceId, instanceName);
+                                         finishJoin(instanceId, instanceName);
                                      });
     });
 }
 
-void ModrinthJoinDialog::acceptSelectedInvite()
+void SharedPackPage::acceptSelectedInvite()
 {
     if (!ensureSignedIn())
         return;
@@ -187,21 +178,19 @@ void ModrinthJoinDialog::acceptSelectedInvite()
         return;
 
     m_acceptInviteButton->setEnabled(false);
-    m_statusLabel->setText(tr("Accepting the invite…"));
     ModrinthShared::acceptPendingInvite(this, instanceId, [this, instanceId, name](const ModrinthShared::Response& res) {
         m_acceptInviteButton->setEnabled(true);
-        // 404 = the pending invite is gone but we may already have access.
         if (!res.ok && res.status != 404) {
             m_statusLabel->setText(res.error);
             return;
         }
-        installShared(instanceId, name);
+        finishJoin(instanceId, name);
     });
 }
 
-void ModrinthJoinDialog::installShared(const QString& instanceId, const QString& instanceName)
+void SharedPackPage::finishJoin(const QString& instanceId, const QString& instanceName)
 {
-    m_statusLabel->setText(tr("Fetching the shared pack…"));
+    m_statusLabel->setText(tr("Installing the shared pack…"));
     ModrinthShared::runJoinFlow(this, instanceId, instanceName, [this, instanceName](bool joined, const QString& message) {
         if (!joined) {
             m_statusLabel->setText(message);
@@ -211,6 +200,6 @@ void ModrinthJoinDialog::installShared(const QString& instanceId, const QString&
                                  tr("\"%1\" is now in your instance list. It checks for the owner's updates every "
                                     "time you press Play.")
                                      .arg(instanceName));
-        accept();
+        m_dialog->reject();  // the instance was created by the join flow itself
     });
 }

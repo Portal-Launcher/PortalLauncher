@@ -150,7 +150,7 @@ void ModrinthSharingPage::refresh()
 {
     const bool signedIn = ModrinthShared::isSignedIn();
     m_accountLabel->setText(signedIn ? tr("Modrinth account: <b>%1</b>").arg(ModrinthShared::username())
-                                     : tr("Not signed in to Modrinth — sign in to share or join packs."));
+                                     : tr("Not signed in to Modrinth - sign in to share or join packs."));
     m_signInButton->setText(signedIn ? tr("Sign out") : tr("Sign in with browser…"));
 
     auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
@@ -183,7 +183,7 @@ void ModrinthSharingPage::refresh()
     } else if (member) {
         m_stateLabel->setText(tr("<b>This is a shared pack you joined.</b>"));
         m_memberInfoLabel->setText(tr("Applied version: %1. The pack checks for the owner's updates every time you "
-                                      "press Play — including mods, shared configs, and the pack icon.")
+                                      "press Play - including mods, shared configs, and the pack icon.")
                                        .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion)));
         m_syncButton->setEnabled(signedIn);
     }
@@ -222,7 +222,7 @@ void ModrinthSharingPage::loadMembers()
             for (const auto& id : ids) {
                 QString label = nameById.value(id, id);
                 if (id == ModrinthShared::userId())
-                    label += tr(" (you — owner)");
+                    label += tr(" (you - owner)");
                 auto* item = new QListWidgetItem(label, m_membersList);
                 item->setData(Qt::UserRole, id);
             }
@@ -311,7 +311,7 @@ void ModrinthSharingPage::inviteByUsername()
                                        }
                                        m_usernameEdit->clear();
                                        m_stateLabel->setText(
-                                           tr("<b>%1 has been invited</b> — they'll get a Modrinth notification.")
+                                           tr("<b>%1 has been invited</b> - they'll get a Modrinth notification.")
                                                .arg(user.value("username").toString()));
                                        loadMembers();
                                    });
