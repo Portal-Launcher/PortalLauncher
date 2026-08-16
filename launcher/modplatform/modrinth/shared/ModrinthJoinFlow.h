@@ -25,6 +25,14 @@ void runJoinFlow(QWidget* parent,
                  const QString& instanceName,
                  std::function<void(bool joined, const QString& message)> done);
 
+/**
+ * The whole "paste an invite link" flow: signs in if needed, looks up the
+ * invite, asks the user to confirm, accepts it, then runs the join flow.
+ * All feedback happens through message boxes parented to `parent`;
+ * done(joined) fires once the flow ends either way.
+ */
+void joinFromInviteRef(QWidget* parent, const QString& inviteRef, std::function<void(bool joined)> done);
+
 struct PendingInvite {
     QString instanceId;
     QString instanceName;

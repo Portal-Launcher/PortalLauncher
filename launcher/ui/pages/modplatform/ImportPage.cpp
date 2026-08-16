@@ -52,6 +52,7 @@
 #include "Json.h"
 
 #include "InstanceImportTask.h"
+#include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "net/NetJob.h"
 
 class UrlValidator : public QValidator {
@@ -106,6 +107,23 @@ void ImportPage::updateState()
     if (ui->modpackEdit->hasAcceptableInput()) {
         QString input = ui->modpackEdit->text().trimmed();
         auto url = QUrl::fromUserInput(input);
+        // Modrinth shared pack invite links install through the join flow, not a regular import
+        const bool isModrinthHost = url.host().compare("modrinth.com", Qt::CaseInsensitive) == 0 ||
+                                    url.host().endsWith(".modrinth.com", Qt::CaseInsensitive);
+        if (isModrinthHost && url.path().split('/', Qt::SkipEmptyParts).contains("share")) {
+            if (m_joiningShare)
+                return;
+            m_joiningShare = true;
+            dialog->setSuggestedPack();
+            ModrinthShared::joinFromInviteRef(this, input, [this](bool joined) {
+                m_joiningShare = false;
+                if (joined)
+                    dialog->reject();  // the join flow already created the instance
+                else
+                    ui->modpackEdit->selectAll();
+            });
+            return;
+        }
         if (url.isLocalFile()) {
             // FIXME: actually do some validation of what's inside here... this is fake AF
             QFileInfo fi(input);

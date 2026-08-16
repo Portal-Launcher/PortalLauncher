@@ -2,6 +2,7 @@
 #include "ModrinthJoinFlow.h"
 
 #include <QJsonObject>
+#include <QMessageBox>
 #include <QObject>
 
 #include "Application.h"
@@ -10,6 +11,7 @@
 #include "ModrinthSharedAttachment.h"
 #include "ModrinthSharedJoinTask.h"
 #include "ModrinthSharedSyncTask.h"
+#include "ModrinthSignInTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 
 namespace ModrinthShared {
@@ -61,6 +63,69 @@ void runJoinFlow(QWidget* parent,
             syncDialog.execWithTask(&syncTask);
         }
         done(true, QString());
+    });
+}
+
+void joinFromInviteRef(QWidget* parent, const QString& inviteRef, std::function<void(bool joined)> done)
+{
+    const QString inviteId = parseInviteRef(inviteRef);
+    if (inviteId.isEmpty()) {
+        done(false);
+        return;
+    }
+
+    if (!isSignedIn()) {
+        ModrinthSignInTask task;
+        ProgressDialog signInDialog(parent);
+        signInDialog.setSkipButton(true, QObject::tr("Cancel"));
+        if (signInDialog.execWithTask(&task) != QDialog::Accepted) {
+            done(false);
+            return;
+        }
+    } else {
+        refreshSessionIfNeeded(parent);
+    }
+
+    getInviteInfo(parent, inviteId, [parent, inviteId, done](const Response& res) {
+        if (!res.ok || !res.json.isObject()) {
+            QMessageBox::warning(parent, QObject::tr("Invite not found"),
+                                 QObject::tr("That invite does not exist or has expired. Ask your friend for a new link."));
+            done(false);
+            return;
+        }
+        const auto invite = res.json.object();
+        const QString instanceId = invite.value("instance_id").toString();
+        QString instanceName = invite.value("instance_name").toString();
+        if (instanceName.trimmed().isEmpty())
+            instanceName = QObject::tr("Shared pack");
+
+        if (QMessageBox::question(parent, QObject::tr("Join \"%1\"?").arg(instanceName),
+                                  QObject::tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are "
+                                              "not reviewed by Modrinth - only accept invites from people you trust.")
+                                      .arg(instanceName)) != QMessageBox::Yes) {
+            done(false);
+            return;
+        }
+
+        acceptInvite(parent, instanceId, inviteId, [parent, instanceId, instanceName, done](const Response& acceptRes) {
+            if (!acceptRes.ok) {
+                QMessageBox::warning(parent, QObject::tr("Could not accept the invite"), acceptRes.error);
+                done(false);
+                return;
+            }
+            runJoinFlow(parent, instanceId, instanceName, [parent, instanceName, done](bool joined, const QString& message) {
+                if (!joined) {
+                    QMessageBox::warning(parent, QObject::tr("Could not join"), message);
+                    done(false);
+                    return;
+                }
+                QMessageBox::information(parent, QObject::tr("Joined!"),
+                                         QObject::tr("\"%1\" is now in your instance list. It checks for the owner's updates "
+                                                     "every time you press Play.")
+                                             .arg(instanceName));
+                done(true);
+            });
+        });
     });
 }
 

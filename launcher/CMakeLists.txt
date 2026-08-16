@@ -1101,8 +1101,6 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/ModrinthInviteFriendDialog.h
     ui/pages/instance/ModrinthSharingPage.cpp
     ui/pages/instance/ModrinthSharingPage.h
-    ui/pages/modplatform/SharedPackPage.cpp
-    ui/pages/modplatform/SharedPackPage.h
     ui/widgets/FriendsPanel.cpp
     ui/widgets/FriendsPanel.h
     ui/pagedialog/PageDialog.cpp

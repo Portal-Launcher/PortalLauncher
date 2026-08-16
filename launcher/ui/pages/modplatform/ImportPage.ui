@@ -58,6 +58,16 @@
       </widget>
      </item>
      <item>
+      <widget class="QLabel" name="label_6">
+       <property name="text">
+        <string>- Modrinth shared pack invites (modrinth.com/share links)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QLabel" name="label_2">
        <property name="text">
         <string>- Prism Launcher, PolyMC or MultiMC exported instances (ZIP)</string>
