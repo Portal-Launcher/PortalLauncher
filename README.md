@@ -24,6 +24,8 @@ This fork adds Modrinth's shared instances feature to Prism, plus some quality o
 
 Everything lives on the `shared-instances` branch. Sign in with your Modrinth account from the Sharing page of any instance to get started.
 
+**Download:** grab the Windows build from the [latest release](https://github.com/TinsleyDevers/PrismLauncher/releases/latest), unzip it anywhere, and run `prismlauncher.exe`. Windows SmartScreen may warn because the build is not signed, click "More info" then "Run anyway". If you already use Prism it will pick up your existing instances and accounts.
+
 ## Installation
 
 <a href="https://repology.org/project/prismlauncher/versions">
