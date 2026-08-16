@@ -37,6 +37,49 @@ void FlameMod::loadIndexedPack(ModPlatform::IndexedPack& pack, QJsonObject& obj)
         }
     }
 
+    // Rich info; the search results and the single-mod endpoint share this shape
+    if (obj.contains("downloadCount")) {
+        pack.extraData.downloads = static_cast<qint64>(obj["downloadCount"].toDouble(-1));
+    }
+    if (obj.contains("dateCreated")) {
+        pack.extraData.dateCreated = QDateTime::fromString(obj["dateCreated"].toString(), Qt::ISODateWithMs);
+    }
+    if (obj.contains("dateModified")) {
+        pack.extraData.dateModified = QDateTime::fromString(obj["dateModified"].toString(), Qt::ISODateWithMs);
+    }
+
+    auto categories = obj["categories"].toArray();
+    if (!categories.isEmpty()) {
+        pack.extraData.categories.clear();
+        for (auto c : categories) {
+            auto name = c.toObject()["name"].toString();
+            if (!name.isEmpty()) {
+                pack.extraData.categories.append(name);
+            }
+        }
+    }
+
+    auto screenshots = obj["screenshots"].toArray();
+    if (!screenshots.isEmpty()) {
+        pack.extraData.gallery.clear();
+        for (auto s : screenshots) {
+            auto shot = s.toObject();
+
+            ModPlatform::GalleryImage image;
+            image.url = shot["url"].toString();
+            image.thumbnailUrl = shot["thumbnailUrl"].toString();
+            if (image.thumbnailUrl.isEmpty()) {
+                image.thumbnailUrl = image.url;
+            }
+            image.title = shot["title"].toString();
+            image.description = shot["description"].toString();
+
+            if (!image.url.isEmpty()) {
+                pack.extraData.gallery.append(image);
+            }
+        }
+    }
+
     pack.extraDataLoaded = false;
     loadURLs(pack, obj);
 }
@@ -139,6 +182,9 @@ auto FlameMod::loadIndexedPackVersion(QJsonObject& obj, bool load_changelog) -> 
     file.fileId = Json::requireInteger(obj, "id");
     file.date = Json::requireString(obj, "fileDate");
     file.version = Json::requireString(obj, "displayName");
+    if (obj.contains("downloadCount")) {
+        file.downloads = static_cast<qint64>(obj["downloadCount"].toDouble(-1));
+    }
     file.downloadUrl = obj["downloadUrl"].toString();
     file.fileName = Json::requireString(obj, "fileName");
     file.fileName = FS::RemoveInvalidPathChars(file.fileName);

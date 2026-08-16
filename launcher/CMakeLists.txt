@@ -1086,6 +1086,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/ExportToModListDialog.h
     ui/dialogs/IconPickerDialog.cpp
     ui/dialogs/IconPickerDialog.h
+    ui/dialogs/ImageViewerDialog.cpp
+    ui/dialogs/ImageViewerDialog.h
     ui/dialogs/ImportResourceDialog.cpp
     ui/dialogs/ImportResourceDialog.h
     ui/dialogs/MSALoginDialog.cpp
@@ -1173,6 +1175,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/VariableSizedImageObject.cpp
     ui/widgets/ProjectItem.h
     ui/widgets/ProjectItem.cpp
+    ui/widgets/ProjectDetailPanel.h
+    ui/widgets/ProjectDetailPanel.cpp
     ui/widgets/SubTaskProgressBar.h
     ui/widgets/SubTaskProgressBar.cpp
     ui/widgets/VersionListView.cpp

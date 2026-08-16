@@ -36,6 +36,7 @@
 
 #pragma once
 
+#include <QDateTime>
 #include <QPair>
 #include <QString>
 #include <QUrl>
@@ -78,6 +79,12 @@ int naturalCompare(const QString& s1, const QString& s2, Qt::CaseSensitivity cs)
 QString truncateUrlHumanFriendly(QUrl& url, int max_len, bool hard_limit = false);
 
 QString humanReadableFileSize(double bytes, bool use_si = false, int decimal_points = 1);
+
+/** Compact human-readable count, e.g. 208329600 -> "208.3M". */
+QString humanReadableCount(double number, int decimal_points = 1);
+
+/** Coarse relative timestamp, e.g. "3 days ago". Empty for invalid datetimes. */
+QString relativeTimeString(const QDateTime& past);
 
 QString getRandomAlphaNumeric();
 

@@ -60,7 +60,7 @@ ModrinthModPage::ModrinthModPage(ModDownloadDialog* dialog, BaseInstance& instan
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &ModrinthModPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &ModrinthModPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 ModrinthResourcePackPage::ModrinthResourcePackPage(ResourcePackDownloadDialog* dialog, BaseInstance& instance)
@@ -78,7 +78,7 @@ ModrinthResourcePackPage::ModrinthResourcePackPage(ResourcePackDownloadDialog* d
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &ModrinthResourcePackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &ModrinthResourcePackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 ModrinthTexturePackPage::ModrinthTexturePackPage(TexturePackDownloadDialog* dialog, BaseInstance& instance)
@@ -96,7 +96,7 @@ ModrinthTexturePackPage::ModrinthTexturePackPage(TexturePackDownloadDialog* dial
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &ModrinthTexturePackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &ModrinthTexturePackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 ModrinthShaderPackPage::ModrinthShaderPackPage(ShaderPackDownloadDialog* dialog, BaseInstance& instance)
@@ -114,7 +114,7 @@ ModrinthShaderPackPage::ModrinthShaderPackPage(ShaderPackDownloadDialog* dialog,
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &ModrinthShaderPackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &ModrinthShaderPackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 ModrinthDataPackPage::ModrinthDataPackPage(DataPackDownloadDialog* dialog, BaseInstance& instance) : DataPackResourcePage(dialog, instance)
@@ -131,7 +131,7 @@ ModrinthDataPackPage::ModrinthDataPackPage(DataPackDownloadDialog* dialog, BaseI
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &ModrinthDataPackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &ModrinthDataPackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 // I don't know why, but doing this on the parent class makes it so that

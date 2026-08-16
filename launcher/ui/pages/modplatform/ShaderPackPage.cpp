@@ -23,7 +23,7 @@ void ShaderPackResourcePage::triggerSearch()
 {
     m_ui->packView->selectionModel()->setCurrentIndex({}, QItemSelectionModel::SelectionFlag::ClearAndSelect);
     m_ui->packView->clearSelection();
-    m_ui->packDescription->clear();
+    m_ui->packDetail->clear();
     m_ui->versionSelectionBox->clear();
 
     updateSelectionButton();

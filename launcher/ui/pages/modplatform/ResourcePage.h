@@ -96,6 +96,7 @@ class ResourcePage : public QWidget, public BasePage {
 
     void onSelectionChanged(QModelIndex curr, QModelIndex prev);
     void onVersionSelectionChanged(int index);
+    void onPanelVersionPicked(int versionIndex);
     void onResourceSelected();
     void onResourceToggle(const QModelIndex& index);
 

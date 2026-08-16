@@ -6,7 +6,8 @@
 enum UserDataTypes {
     TITLE = 257,        // QString
     DESCRIPTION = 258,  // QString
-    INSTALLED = 259     // bool
+    INSTALLED = 259,    // bool
+    META = 260          // QString, optional extra info line (downloads, update date, ...)
 };
 
 /** This is an item delegate composed of:
@@ -21,6 +22,7 @@ class ProjectItemDelegate final : public QStyledItemDelegate {
     ProjectItemDelegate(QWidget* parent);
 
     void paint(QPainter*, const QStyleOptionViewItem&, const QModelIndex&) const override;
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
     bool editorEvent(QEvent* event, QAbstractItemModel* model, const QStyleOptionViewItem& option, const QModelIndex& index) override;
 

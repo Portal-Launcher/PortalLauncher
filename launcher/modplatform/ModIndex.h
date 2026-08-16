@@ -19,9 +19,11 @@
 
 #pragma once
 
+#include <QDateTime>
 #include <QList>
 #include <QMetaType>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <compare>
 #include <cstdint>
@@ -125,6 +127,7 @@ struct IndexedVersion {
     QString changelog;
     QList<Dependency> dependencies;
     Side side = Side::NoSide;  // this is for flame API
+    qint64 downloads = -1;     // negative means the provider didn't supply it
 
     // For internal use, not provided by APIs
     bool is_currently_selected = false;
@@ -147,6 +150,13 @@ struct IndexedVersion {
     }
 };
 
+struct GalleryImage {
+    QString url;
+    QString thumbnailUrl;
+    QString title;
+    QString description;
+};
+
 struct ExtraPackData {
     QList<DonationData> donate;
 
@@ -158,6 +168,15 @@ struct ExtraPackData {
     QString status;
 
     QString body;
+
+    // Negative counts / invalid dates mean the provider didn't supply the value
+    qint64 downloads = -1;
+    qint64 followers = -1;
+    QString license;
+    QStringList categories;
+    QDateTime dateCreated;
+    QDateTime dateModified;
+    QList<GalleryImage> gallery;
 };
 
 struct IndexedPack {

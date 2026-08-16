@@ -36,6 +36,8 @@
 
 #include "StringUtils.h"
 
+#include <QDateTime>
+#include <QObject>
 #include <QRegularExpression>
 #include <QUuid>
 #include <cmath>
@@ -176,6 +178,60 @@ QString StringUtils::humanReadableFileSize(double bytes, bool use_si, int decima
     } while (round(abs(bytes) * r) / r >= scale && u < units.length() - 1);
 
     return QString::number(bytes, 'f', 2) + " " + units[u];
+}
+
+QString StringUtils::humanReadableCount(double number, int decimal_points)
+{
+    static const QStringList s_count_units{ "k", "M", "B" };
+
+    if (abs(number) < 1000) {
+        return QString::number(number, 'f', 0);
+    }
+
+    int u = -1;
+    double r = pow(10, decimal_points);
+
+    do {
+        number /= 1000;
+        u++;
+    } while (round(abs(number) * r) / r >= 1000 && u < s_count_units.length() - 1);
+
+    QString result = QString::number(number, 'f', decimal_points);
+    if (result.endsWith(".0")) {
+        result.chop(2);
+    }
+    return result + s_count_units[u];
+}
+
+QString StringUtils::relativeTimeString(const QDateTime& past)
+{
+    if (!past.isValid()) {
+        return {};
+    }
+
+    qint64 secs = past.toUTC().secsTo(QDateTime::currentDateTimeUtc());
+    if (secs < 0) {
+        secs = 0;
+    }
+    const qint64 days = secs / 86400;
+
+    if (secs < 3600) {
+        const qint64 minutes = secs / 60;
+        return minutes <= 1 ? QObject::tr("just now") : QObject::tr("%1 minutes ago").arg(minutes);
+    }
+    if (secs < 86400) {
+        const qint64 hours = secs / 3600;
+        return hours == 1 ? QObject::tr("1 hour ago") : QObject::tr("%1 hours ago").arg(hours);
+    }
+    if (days < 31) {
+        return days == 1 ? QObject::tr("yesterday") : QObject::tr("%1 days ago").arg(days);
+    }
+    if (days < 365) {
+        const qint64 months = days / 30;
+        return months <= 1 ? QObject::tr("1 month ago") : QObject::tr("%1 months ago").arg(months);
+    }
+    const qint64 years = days / 365;
+    return years <= 1 ? QObject::tr("1 year ago") : QObject::tr("%1 years ago").arg(years);
 }
 
 QString StringUtils::getRandomAlphaNumeric()

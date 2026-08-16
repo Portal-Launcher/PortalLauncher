@@ -21,7 +21,7 @@ DataPackResourcePage::DataPackResourcePage(DataPackDownloadDialog* dialog, BaseI
 void DataPackResourcePage::triggerSearch()
 {
     m_ui->packView->clearSelection();
-    m_ui->packDescription->clear();
+    m_ui->packDetail->clear();
     m_ui->versionSelectionBox->clear();
 
     updateSelectionButton();

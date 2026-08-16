@@ -21,6 +21,8 @@
 #include "FileSystem.h"
 #include "ModrinthAPI.h"
 
+#include <algorithm>
+
 #include "Json.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -72,8 +74,67 @@ void Modrinth::loadIndexedPack(ModPlatform::IndexedPack& pack, QJsonObject& obj)
         pack.side = ModPlatform::Side::ClientSide;
     }
 
+    // Rich info available straight from the search results. Only set what's present,
+    // since this also runs on the full project object where some keys differ.
+    if (obj.contains("downloads")) {
+        pack.extraData.downloads = static_cast<qint64>(obj["downloads"].toDouble(-1));
+    }
+    if (obj.contains("follows")) {
+        pack.extraData.followers = static_cast<qint64>(obj["follows"].toDouble(-1));
+    }
+    if (obj.contains("license") && obj["license"].isString()) {
+        pack.extraData.license = obj["license"].toString();
+    }
+    if (obj.contains("date_created")) {
+        pack.extraData.dateCreated = QDateTime::fromString(obj["date_created"].toString(), Qt::ISODateWithMs);
+    }
+    if (obj.contains("date_modified")) {
+        pack.extraData.dateModified = QDateTime::fromString(obj["date_modified"].toString(), Qt::ISODateWithMs);
+    }
+
+    auto categories = obj["display_categories"].toArray();
+    if (categories.isEmpty()) {
+        categories = obj["categories"].toArray();
+    }
+    if (!categories.isEmpty()) {
+        pack.extraData.categories.clear();
+        for (auto c : categories) {
+            auto cat = c.toString();
+            if (!cat.isEmpty()) {
+                pack.extraData.categories.append(cat);
+            }
+        }
+    }
+
+    // Search hits carry the gallery as a plain list of image URLs. Keep it as a preview
+    // until the full project info (with titles and full-size URLs) is loaded.
+    if (pack.extraData.gallery.isEmpty()) {
+        for (auto img : obj["gallery"].toArray()) {
+            if (auto url = img.toString(); !url.isEmpty()) {
+                ModPlatform::GalleryImage image;
+                image.url = url;
+                image.thumbnailUrl = url;
+                pack.extraData.gallery.append(image);
+            }
+        }
+    }
+
     // Modrinth can have more data than what's provided by the basic search :)
     pack.extraDataLoaded = false;
+}
+
+/** Best-effort thumbnail variant of a Modrinth CDN gallery image (the CDN serves
+ *  a downscaled copy with a _350 suffix). Callers fall back to the full URL. */
+static QString modrinthThumbnail(const QString& url)
+{
+    if (!url.contains("cdn.modrinth.com") || url.contains("_350.")) {
+        return url;
+    }
+    auto dot = url.lastIndexOf('.');
+    if (dot <= url.lastIndexOf('/')) {
+        return url;
+    }
+    return url.left(dot) + "_350" + url.mid(dot);
 }
 
 void Modrinth::loadExtraPackData(ModPlatform::IndexedPack& pack, QJsonObject& obj)
@@ -111,6 +172,50 @@ void Modrinth::loadExtraPackData(ModPlatform::IndexedPack& pack, QJsonObject& ob
     pack.extraData.status = obj["status"].toString();
 
     pack.extraData.body = obj["body"].toString().remove("<br>");
+
+    // The full project object is authoritative for the rich info
+    if (obj.contains("downloads")) {
+        pack.extraData.downloads = static_cast<qint64>(obj["downloads"].toDouble(-1));
+    }
+    if (obj.contains("followers")) {
+        pack.extraData.followers = static_cast<qint64>(obj["followers"].toDouble(-1));
+    }
+    if (auto license = obj["license"].toObject(); !license.isEmpty()) {
+        pack.extraData.license = license["name"].toString();
+        if (pack.extraData.license.isEmpty()) {
+            pack.extraData.license = license["id"].toString();
+        }
+    }
+    if (obj.contains("published")) {
+        pack.extraData.dateCreated = QDateTime::fromString(obj["published"].toString(), Qt::ISODateWithMs);
+    }
+    if (obj.contains("updated")) {
+        pack.extraData.dateModified = QDateTime::fromString(obj["updated"].toString(), Qt::ISODateWithMs);
+    }
+
+    auto gallery = obj["gallery"].toArray();
+    if (!gallery.isEmpty()) {
+        pack.extraData.gallery.clear();
+
+        QList<QPair<double, ModPlatform::GalleryImage>> ordered;
+        for (auto img : gallery) {
+            auto img_obj = img.toObject();
+
+            ModPlatform::GalleryImage image;
+            image.url = img_obj["url"].toString();
+            image.thumbnailUrl = modrinthThumbnail(image.url);
+            image.title = img_obj["title"].toString();
+            image.description = img_obj["description"].toString();
+
+            if (!image.url.isEmpty()) {
+                ordered.append({ img_obj["ordering"].toDouble(0), image });
+            }
+        }
+        std::stable_sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (auto& [ordering, image] : ordered) {
+            pack.extraData.gallery.append(image);
+        }
+    }
 
     pack.extraDataLoaded = true;
 }
@@ -151,6 +256,9 @@ ModPlatform::IndexedVersion Modrinth::loadIndexedPackVersion(QJsonObject& obj,
     file.version = Json::requireString(obj, "name");
     file.version_number = Json::requireString(obj, "version_number");
     file.version_type = ModPlatform::IndexedVersionType::fromString(Json::requireString(obj, "version_type"));
+    if (obj.contains("downloads")) {
+        file.downloads = static_cast<qint64>(obj["downloads"].toDouble(-1));
+    }
 
     if (obj.contains("changelog")) {
         file.changelog = Json::requireString(obj, "changelog");

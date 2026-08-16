@@ -23,6 +23,9 @@
      <item>
       <widget class="QLineEdit" name="searchEdit"/>
      </item>
+     <item>
+      <widget class="QComboBox" name="sortByBox"/>
+     </item>
     </layout>
    </item>
    <item>
@@ -51,18 +54,11 @@
        <enum>QAbstractItemView::ScrollPerPixel</enum>
       </property>
      </widget>
-     <widget class="ProjectDescriptionPage" name="packDescription">
-      <property name="openExternalLinks">
-       <bool>false</bool>
-      </property>
-      <property name="openLinks">
-       <bool>false</bool>
-      </property>
-     </widget>
+     <widget class="ProjectDetailPanel" name="packDetail"/>
     </widget>
    </item>
    <item>
-    <layout class="QGridLayout" name="gridLayout_4" columnstretch="0,0,0">
+    <layout class="QGridLayout" name="gridLayout_4" columnstretch="1,0,0">
      <item row="0" column="2">
       <widget class="QComboBox" name="versionSelectionBox"/>
      </item>
@@ -76,9 +72,6 @@
        </property>
       </widget>
      </item>
-     <item row="0" column="0">
-      <widget class="QComboBox" name="sortByBox"/>
-     </item>
      <item row="1" column="2">
       <widget class="QPushButton" name="resourceSelectionButton"/>
      </item>
@@ -88,14 +81,14 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>ProjectDescriptionPage</class>
-   <extends>QTextBrowser</extends>
-   <header>ui/widgets/ProjectDescriptionPage.h</header>
+   <class>ProjectDetailPanel</class>
+   <extends>QWidget</extends>
+   <header>ui/widgets/ProjectDetailPanel.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <tabstops>
   <tabstop>packView</tabstop>
-  <tabstop>packDescription</tabstop>
   <tabstop>sortByBox</tabstop>
   <tabstop>versionSelectionBox</tabstop>
  </tabstops>

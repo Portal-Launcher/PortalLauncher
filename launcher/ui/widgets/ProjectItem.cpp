@@ -103,6 +103,11 @@ void ProjectItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
         painter->restore();
     }
 
+    // An optional meta line (downloads, update date, ...) claims space at the bottom
+    const auto meta = index.data(UserDataTypes::META).toString();
+    const int meta_height = meta.isEmpty() ? 0 : opt.fontMetrics.height() + 2;
+    const int body_height = rect.height() - meta_height;
+
     {  // Description painting
         auto description = index.data(UserDataTypes::DESCRIPTION).toString().simplified();
 
@@ -118,7 +123,7 @@ void ProjectItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
         // Get second line, elided if needed
         if (cut_text.size() > 1) {
             // 2.5x so because there should be some margin left from the 2x so things don't get too squishy.
-            if (rect.height() - title_height <= 2.5 * opt.fontMetrics.height()) {
+            if (body_height - title_height <= 2.5 * opt.fontMetrics.height()) {
                 // If there's not enough space, show only a single line, elided.
                 description = opt.fontMetrics.elidedText(description, opt.textElideMode, cut_text.at(0).first);
             } else {
@@ -135,7 +140,7 @@ void ProjectItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
 
         // Have the y-value be set based on the number of lines in the description, to centralize the
         // description text with the space between the base and the title.
-        int description_y = rect.y() + title_height + (rect.height() - title_height) / 2;
+        int description_y = rect.y() + title_height + (body_height - title_height) / 2;
         if (num_lines == 1)
             description_y -= opt.fontMetrics.height() / 2;
         else
@@ -146,7 +151,33 @@ void ProjectItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
                           description);
     }
 
+    if (meta_height > 0) {  // Meta line painting
+        painter->save();
+
+        auto meta_color = painter->pen().color();
+        meta_color.setAlphaF(meta_color.alphaF() * 0.6F);
+        painter->setPen(meta_color);
+
+        auto elided_meta = opt.fontMetrics.elidedText(meta, opt.textElideMode, remaining_width);
+        painter->drawText(rect.x(), rect.y() + body_height - 2, remaining_width, opt.fontMetrics.height(), Qt::AlignLeft | Qt::AlignTop,
+                          elided_meta);
+
+        painter->restore();
+    }
+
     painter->restore();
+}
+
+QSize ProjectItemDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    auto size = QStyledItemDelegate::sizeHint(option, index);
+
+    // Give the optional meta line its own room, on top of whatever the model asked for
+    if (!index.data(UserDataTypes::META).toString().isEmpty()) {
+        size.setHeight(size.height() + option.fontMetrics.height() + 2);
+    }
+
+    return size;
 }
 
 bool ProjectItemDelegate::editorEvent(QEvent* event,

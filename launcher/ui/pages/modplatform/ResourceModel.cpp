@@ -16,6 +16,7 @@
 
 #include "Application.h"
 #include "BuildConfig.h"
+#include "StringUtils.h"
 #include "settings/SettingsObject.h"
 
 #include "modplatform/ResourceAPI.h"
@@ -84,6 +85,16 @@ auto ResourceModel::data(const QModelIndex& index, int role) const -> QVariant
             return pack->name;
         case UserDataTypes::DESCRIPTION:
             return pack->description;
+        case UserDataTypes::META: {
+            QStringList parts;
+            if (pack->extraData.downloads >= 0) {
+                parts << tr("%1 downloads").arg(StringUtils::humanReadableCount(static_cast<double>(pack->extraData.downloads)));
+            }
+            if (pack->extraData.dateModified.isValid()) {
+                parts << tr("updated %1").arg(StringUtils::relativeTimeString(pack->extraData.dateModified));
+            }
+            return parts.join(QStringLiteral("  ·  "));
+        }
         case Qt::CheckStateRole:
             return pack->isAnyVersionSelected() ? Qt::Checked : Qt::Unchecked;
         case UserDataTypes::INSTALLED:
@@ -106,6 +117,7 @@ QHash<int, QByteArray> ResourceModel::roleNames() const
     roles[UserDataTypes::TITLE] = "title";
     roles[UserDataTypes::DESCRIPTION] = "description";
     roles[UserDataTypes::INSTALLED] = "installed";
+    roles[UserDataTypes::META] = "meta";
 
     return roles;
 }

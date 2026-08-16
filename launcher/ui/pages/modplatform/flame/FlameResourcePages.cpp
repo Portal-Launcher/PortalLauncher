@@ -62,7 +62,7 @@ FlameModPage::FlameModPage(ModDownloadDialog* dialog, BaseInstance& instance) : 
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &FlameModPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &FlameModPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 void FlameModPage::openUrl(const QUrl& url)
@@ -96,7 +96,7 @@ FlameResourcePackPage::FlameResourcePackPage(ResourcePackDownloadDialog* dialog,
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &FlameResourcePackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &FlameResourcePackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 void FlameResourcePackPage::openUrl(const QUrl& url)
@@ -130,7 +130,7 @@ FlameTexturePackPage::FlameTexturePackPage(TexturePackDownloadDialog* dialog, Ba
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &FlameTexturePackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &FlameTexturePackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 void FlameTexturePackPage::openUrl(const QUrl& url)
@@ -180,7 +180,7 @@ FlameShaderPackPage::FlameShaderPackPage(ShaderPackDownloadDialog* dialog, BaseI
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &FlameShaderPackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &FlameShaderPackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 FlameDataPackPage::FlameDataPackPage(DataPackDownloadDialog* dialog, BaseInstance& instance) : DataPackResourcePage(dialog, instance)
@@ -197,7 +197,7 @@ FlameDataPackPage::FlameDataPackPage(DataPackDownloadDialog* dialog, BaseInstanc
     connect(m_ui->versionSelectionBox, &QComboBox::currentIndexChanged, this, &FlameDataPackPage::onVersionSelectionChanged);
     connect(m_ui->resourceSelectionButton, &QPushButton::clicked, this, &FlameDataPackPage::onResourceSelected);
 
-    m_ui->packDescription->setMetaEntry(metaEntryBase());
+    m_ui->packDetail->setMetaEntry(metaEntryBase());
 }
 
 void FlameShaderPackPage::openUrl(const QUrl& url)
