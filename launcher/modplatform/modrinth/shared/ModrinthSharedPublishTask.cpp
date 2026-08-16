@@ -7,7 +7,9 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QIcon>
+#include <QImage>
 #include <QJsonDocument>
+#include <QPainter>
 #include <QPixmap>
 #include <QTemporaryDir>
 
@@ -384,9 +386,20 @@ void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)
         const QIcon icon = APPLICATION->icons()->getIcon(m_instance->iconKey());
         const QPixmap pixmap = icon.pixmap(128, 128);
         if (!pixmap.isNull()) {
+            // Modrinth's icon endpoint strips the alpha channel (verified: an
+            // uploaded RGBA PNG comes back as RGB), which turns transparency
+            // into black. Composite onto a neutral dark tile instead so
+            // transparent icons still look intentional for friends.
+            const QImage source = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
+            QImage composited(source.size(), QImage::Format_RGB32);
+            composited.fill(QColor(45, 47, 51));
+            {
+                QPainter painter(&composited);
+                painter.drawImage(0, 0, source);
+            }
             QBuffer buffer(&png);
             buffer.open(QIODevice::WriteOnly);
-            pixmap.save(&buffer, "PNG");
+            composited.save(&buffer, "PNG");
         }
     }
     if (png.isEmpty()) {
