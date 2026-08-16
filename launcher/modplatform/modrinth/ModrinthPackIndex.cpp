@@ -202,8 +202,15 @@ void Modrinth::loadExtraPackData(ModPlatform::IndexedPack& pack, QJsonObject& ob
             auto img_obj = img.toObject();
 
             ModPlatform::GalleryImage image;
-            image.url = img_obj["url"].toString();
-            image.thumbnailUrl = modrinthThumbnail(image.url);
+            // "url" is a downscaled display copy (often _350); "raw_url" is the original
+            image.url = img_obj["raw_url"].toString();
+            image.thumbnailUrl = img_obj["url"].toString();
+            if (image.url.isEmpty()) {
+                image.url = image.thumbnailUrl;
+            }
+            if (image.thumbnailUrl.isEmpty()) {
+                image.thumbnailUrl = modrinthThumbnail(image.url);
+            }
             image.title = img_obj["title"].toString();
             image.description = img_obj["description"].toString();
 
