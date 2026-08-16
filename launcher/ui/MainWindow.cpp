@@ -1613,6 +1613,27 @@ void MainWindow::on_actionDeleteInstance_triggered()
     if (!checkLinkedInstances(id, this, tr("Deleting")))
         return;
 
+    // Shared instances: deleting the local copy should not leave a ghost
+    // membership behind on the service.
+    if (ModrinthShared::isSignedIn()) {
+        if (auto attachment = ModrinthShared::Attachment::load(m_selectedInstance->instanceRoot())) {
+            if (attachment->isMember()) {
+                // Best effort: take ourselves off the share's member list.
+                ModrinthShared::removeMembers(APPLICATION, attachment->id, { ModrinthShared::userId() },
+                                              [](const ModrinthShared::Response&) {});
+            } else if (attachment->isOwner()) {
+                const auto stopSharing = QMessageBox::question(
+                    this, tr("Stop sharing?"),
+                    tr("\"%1\" is shared with friends. Stop sharing it too?\n\n"
+                       "If you choose No, friends keep the last pushed version, but nobody will be able to push "
+                       "updates to it anymore.")
+                        .arg(m_selectedInstance->name()));
+                if (stopSharing == QMessageBox::Yes)
+                    ModrinthShared::deleteRemoteInstance(APPLICATION, attachment->id, [](const ModrinthShared::Response&) {});
+            }
+        }
+    }
+
     if (APPLICATION->instances()->trashInstance(id)) {
         ui->actionUndoTrashInstance->setEnabled(APPLICATION->instances()->trashedSomething());
     } else {
