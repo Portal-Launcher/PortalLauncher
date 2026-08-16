@@ -57,11 +57,13 @@
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ResourceDownloadDialog.h"
 #include "ui/dialogs/ResourceUpdateDialog.h"
+#include "ui/dialogs/ScrollMessageBox.h"
 
 #include "minecraft/PackProfile.h"
 #include "minecraft/VersionFilterData.h"
 #include "minecraft/mod/Mod.h"
 #include "minecraft/mod/ModFolderModel.h"
+#include "minecraft/mod/ModUpdateBackup.h"
 
 #include "tasks/ConcurrentTask.h"
 #include "tasks/Task.h"
@@ -96,6 +98,10 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
 
     updateMenu->addAction(ui->actionResetItemMetadata);
     connect(ui->actionResetItemMetadata, &QAction::triggered, this, &ModFolderPage::deleteModMetadata);
+
+    auto* revertUpdate = updateMenu->addAction(tr("Revert Last Mod Update"));
+    revertUpdate->setToolTip(tr("Restore the mod files that were replaced by the most recent mod update."));
+    connect(revertUpdate, &QAction::triggered, this, &ModFolderPage::revertLastUpdate);
 
     ui->actionUpdateItem->setMenu(updateMenu);
 
@@ -278,6 +284,13 @@ void ModFolderPage::updateMods(bool includeDeps)
     }
 
     if (updateDialog.exec() != 0) {
+        const auto updateTasks = updateDialog.getTasks();
+
+        // Snapshot the outgoing files so this update can be reverted later
+        if (!ModUpdateBackup::createSnapshot(m_instance, m_model, updateTasks)) {
+            qWarning() << "Could not create a mod update snapshot; 'Revert Last Mod Update' will not cover this update.";
+        }
+
         auto* tasks = new ConcurrentTask("Download Mods", APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
         connect(tasks, &Task::failed, [this, tasks](const QString& reason) {
             CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->show();
@@ -295,7 +308,7 @@ void ModFolderPage::updateMods(bool includeDeps)
             tasks->deleteLater();
         });
 
-        for (const auto& task : updateDialog.getTasks()) {
+        for (const auto& task : updateTasks) {
             tasks->addTask(task);
         }
 
@@ -305,6 +318,67 @@ void ModFolderPage::updateMods(bool includeDeps)
 
         m_model->update();
     }
+}
+
+void ModFolderPage::revertLastUpdate()
+{
+    auto snapshotPath = ModUpdateBackup::latestSnapshot(m_instance);
+    if (!snapshotPath.has_value()) {
+        CustomMessageBox::selectable(this, tr("Revert Mod Update"),
+                                     tr("There is no mod update snapshot to revert for this instance."), QMessageBox::Information)
+            ->exec();
+        return;
+    }
+
+    auto backup = ModUpdateBackup::load(snapshotPath.value());
+    if (!backup.has_value()) {
+        CustomMessageBox::selectable(this, tr("Revert Mod Update"),
+                                     tr("The most recent mod update snapshot could not be read. It may be incomplete or corrupted."),
+                                     QMessageBox::Warning)
+            ->exec();
+        return;
+    }
+
+    QStringList modNames;
+    for (const auto& entry : backup->entries()) {
+        modNames.append(entry.name.isEmpty() ? entry.newFile : entry.name);
+    }
+
+    auto when = backup->created().isValid() ? backup->created().toString(Qt::TextDate) : tr("an unknown time");
+    auto question = tr("This will revert the mod update from %1, affecting the following mods:\n\n%2\n\n"
+                       "The updated files will be removed and the previous files will be restored.\n"
+                       "Are you sure you want to continue?")
+                        .arg(when, modNames.join('\n'));
+    if (m_instance != nullptr && m_instance->isRunning()) {
+        question += "\n\n" + tr("Warning: The game is currently running. Files that are in use may fail to be replaced.");
+    }
+
+    auto response = CustomMessageBox::selectable(this, tr("Confirm Revert"), question, QMessageBox::Question,
+                                                 QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+                        ->exec();
+    if (response != QMessageBox::Yes) {
+        return;
+    }
+
+    QStringList summary;
+    bool clean = backup->revert(m_model, summary);
+    if (clean) {
+        backup->remove();
+        summary.append(QString());
+        summary.append(tr("The snapshot was removed after the successful revert."));
+    } else {
+        summary.append(QString());
+        summary.append(tr("The snapshot was kept because some steps could not be completed."));
+    }
+
+    QString text;
+    for (const auto& line : summary) {
+        text += line.toHtmlEscaped() + "<br>";
+    }
+
+    ScrollMessageBox messageDialog(this, tr("Revert Mod Update"), tr("Reverting the last mod update gave the following results:"), text);
+    messageDialog.setModal(true);
+    messageDialog.exec();
 }
 
 void ModFolderPage::deleteModMetadata()

@@ -35,6 +35,7 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
 
    private:
     auto ensureMetadata() -> bool;
+    QStringList findMissingDependencies(const QList<std::shared_ptr<GetModDependenciesTask::PackDependency>>& selectedVers);
 
    private slots:
     void onMetadataEnsured(Resource* resource);

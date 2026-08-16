@@ -23,6 +23,8 @@
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 
 #include <QClipboard>
+#include <QLabel>
+#include <QSet>
 #include <QShortcut>
 #include <QTextBrowser>
 #include <QTreeWidgetItem>
@@ -200,7 +202,28 @@ void ResourceUpdateDialog::checkCandidates()
         }
     }
 
-    if (m_includeDeps && !APPLICATION->settings()->get("ModDependenciesDisabled").toBool()) {  // dependencies
+    const bool depsDisabled = APPLICATION->settings()->get("ModDependenciesDisabled").toBool();
+    bool includeDeps = m_includeDeps;
+
+    // When not resolving dependencies anyway, check whether the new versions declare
+    // required dependencies that are neither installed nor part of this update
+    QStringList missingDeps;
+    if (!depsDisabled && !includeDeps && !m_tasks.isEmpty()) {
+        missingDeps = findMissingDependencies(selectedVers);
+        if (!missingDeps.isEmpty()) {
+            auto response =
+                CustomMessageBox::selectable(m_parent, tr("Missing dependencies"),
+                                             tr("The new versions of some mods require dependencies that are neither installed "
+                                                "nor part of this update:\n\n%1\n\n"
+                                                "Do you want to look up the missing dependencies and add them to this update?")
+                                                 .arg(missingDeps.join('\n')),
+                                             QMessageBox::Warning, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes)
+                    ->exec();
+            includeDeps = response == QMessageBox::Yes;
+        }
+    }
+
+    if (includeDeps && !depsDisabled) {  // dependencies
         auto* modModel = dynamic_cast<ModFolderModel*>(m_resourceModel);
 
         if (modModel != nullptr) {
@@ -253,6 +276,19 @@ void ResourceUpdateDialog::checkCandidates()
         }
     }
 
+    // Surface a persistent warning about missing dependencies in the review dialog
+    if (!missingDeps.isEmpty()) {
+        auto* warningLabel = new QLabel(this);
+        warningLabel->setWordWrap(true);
+        if (includeDeps) {
+            warningLabel->setText(tr("Warning: Some of the new versions had missing required dependencies. "
+                                     "Any that could be resolved were added to the list above."));
+        } else {
+            warningLabel->setText(tr("Warning: The following required dependencies are missing:\n%1").arg(missingDeps.join('\n')));
+        }
+        ui->gridLayout->addWidget(warningLabel, 3, 0);
+    }
+
     // If there's no resource to be updated
     if (ui->modTreeWidget->topLevelItemCount() == 0) {
         m_noUpdates = true;
@@ -273,6 +309,81 @@ void ResourceUpdateDialog::checkCandidates()
     if (m_aborted || m_noUpdates) {
         QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
     }
+}
+
+// Checks (without network access) whether the required dependencies declared by the new versions
+// are satisfied by installed mods or by other mods in the update set, and lists the missing ones
+QStringList ResourceUpdateDialog::findMissingDependencies(
+    const QList<std::shared_ptr<GetModDependenciesTask::PackDependency>>& selectedVers)
+{
+    auto* modModel = dynamic_cast<ModFolderModel*>(m_resourceModel);
+    if (modModel == nullptr) {
+        return {};
+    }
+
+    auto projectKey = [](ModPlatform::ResourceProvider provider, const QString& id) {
+        return QString("%1:%2").arg(ModPlatform::ProviderCapabilities::name(provider), id);
+    };
+    auto versionKey = [](ModPlatform::ResourceProvider provider, const QString& version) {
+        return QString("%1@%2").arg(ModPlatform::ProviderCapabilities::name(provider), version);
+    };
+
+    QSet<QString> satisfied;
+
+    for (auto* mod : modModel->allMods()) {
+        if (auto meta = mod->metadata(); meta != nullptr) {
+            satisfied.insert(projectKey(meta->provider, meta->project_id.toString()));
+            satisfied.insert(versionKey(meta->provider, meta->file_id.toString()));
+        }
+    }
+    for (const auto& sel : selectedVers) {
+        satisfied.insert(projectKey(sel->pack->provider, sel->pack->addonId.toString()));
+        satisfied.insert(versionKey(sel->pack->provider, sel->version.fileId.toString()));
+        satisfied.insert(versionKey(sel->pack->provider, sel->version.version));
+    }
+
+    // Mods like Fabric API have Quilt counterparts that satisfy the same dependency
+    for (const auto& over : ModPlatform::getOverrideDeps()) {
+        if (satisfied.contains(projectKey(over.provider, over.fabric))) {
+            satisfied.insert(projectKey(over.provider, over.quilt));
+        } else if (satisfied.contains(projectKey(over.provider, over.quilt))) {
+            satisfied.insert(projectKey(over.provider, over.fabric));
+        }
+    }
+
+    QStringList missing;
+    for (const auto& sel : selectedVers) {
+        if (!m_tasks.contains(sel->pack->name)) {
+            continue;  // only new versions that are actually part of this update matter
+        }
+
+        for (const auto& dep : sel->version.dependencies) {
+            if (dep.type != ModPlatform::DependencyType::REQUIRED) {
+                continue;
+            }
+
+            auto addonId = dep.addonId.toString();
+            bool depSatisfied = false;
+            if (addonId.isEmpty()) {
+                // Modrinth dependencies may reference only a version instead of a project
+                depSatisfied = dep.version.isEmpty() || satisfied.contains(versionKey(sel->pack->provider, dep.version));
+            } else {
+                depSatisfied = satisfied.contains(projectKey(sel->pack->provider, addonId));
+            }
+
+            if (!depSatisfied) {
+                auto depName = addonId.isEmpty() ? tr("version %1").arg(dep.version) : tr("project %1").arg(addonId);
+                //: %1 is the mod name, %2 the missing dependency, %3 the mod platform it comes from
+                auto line = tr("%1 requires %2 from %3")
+                                .arg(sel->pack->name, depName, ModPlatform::ProviderCapabilities::readableName(sel->pack->provider));
+                if (!missing.contains(line)) {
+                    missing.append(line);
+                }
+            }
+        }
+    }
+
+    return missing;
 }
 
 // Part 1: Ensure we have a valid metadata
