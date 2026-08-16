@@ -77,6 +77,7 @@ class ModrinthSharingPage : public QWidget, public BasePage {
     QPushButton* m_newLinkButton;
     QLineEdit* m_usernameEdit;
     QPushButton* m_inviteUserButton;
+    QPushButton* m_inviteFriendButton;
     QListWidget* m_membersList;
     QPushButton* m_removeMemberButton;
     QPushButton* m_stopButton;

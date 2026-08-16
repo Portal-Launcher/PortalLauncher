@@ -100,6 +100,7 @@
 #include "ui/dialogs/CreateShortcutDialog.h"
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ExportInstanceDialog.h"
+#include "ui/dialogs/ModrinthInviteFriendDialog.h"
 #include "ui/dialogs/ModrinthJoinDialog.h"
 #include <QClipboard>
 #include <QTimer>
@@ -1491,6 +1492,17 @@ void MainWindow::on_actionCopyShareLink_triggered()
     });
 }
 
+void MainWindow::on_actionInviteFriend_triggered()
+{
+    if (!m_selectedInstance)
+        return;
+    auto attachment = ModrinthShared::Attachment::load(m_selectedInstance->instanceRoot());
+    if (!attachment || !attachment->isOwner())
+        return;
+    ModrinthInviteFriendDialog dialog(this, attachment->id, m_selectedInstance->name());
+    dialog.exec();
+}
+
 void MainWindow::updateShareQuickActions()
 {
     bool owner = false;
@@ -1499,6 +1511,7 @@ void MainWindow::updateShareQuickActions()
         owner = attachment && attachment->isOwner();
     }
     ui->actionCopyShareLink->setVisible(owner);
+    ui->actionInviteFriend->setVisible(owner);
 }
 
 void MainWindow::on_actionManageAccounts_triggered()
@@ -1892,6 +1905,7 @@ void MainWindow::setInstanceActionsEnabled(bool enabled)
     ui->actionEditInstance->setEnabled(enabled);
     ui->actionShareInstance->setEnabled(enabled);
     ui->actionCopyShareLink->setEnabled(enabled);
+    ui->actionInviteFriend->setEnabled(enabled);
     ui->actionChangeInstGroup->setEnabled(enabled);
     ui->actionViewSelectedInstFolder->setEnabled(enabled);
     ui->actionExportInstance->setEnabled(enabled);

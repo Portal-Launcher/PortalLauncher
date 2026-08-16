@@ -31,6 +31,7 @@ class FriendsPanel : public QDockWidget {
    private:
     void acceptRequest(const QString& userId, const QString& username);
     void joinInvite(const QString& instanceId, const QString& instanceName);
+    void launchLocalInstance(const QString& instanceId);
 
     struct Invite {
         QString instanceId;

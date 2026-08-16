@@ -15,6 +15,7 @@
 #include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
+#include "ui/dialogs/ModrinthInviteFriendDialog.h"
 #include "ui/dialogs/ProgressDialog.h"
 
 ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : QWidget(parent), m_instance(inst)
@@ -83,8 +84,11 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
         m_usernameEdit = new QLineEdit(m_ownerBox);
         m_usernameEdit->setPlaceholderText(tr("Friend's Modrinth username (not their Minecraft name)"));
         m_inviteUserButton = new QPushButton(tr("Invite"), m_ownerBox);
+        m_inviteFriendButton = new QPushButton(tr("Invite a friend…"), m_ownerBox);
+        m_inviteFriendButton->setToolTip(tr("Pick someone from your Modrinth friends list to invite."));
         userRow->addWidget(m_usernameEdit, 1);
         userRow->addWidget(m_inviteUserButton);
+        userRow->addWidget(m_inviteFriendButton);
         box->addLayout(userRow);
 
         box->addWidget(new QLabel(tr("Members:"), m_ownerBox));
@@ -126,6 +130,14 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
     connect(m_pushButton, &QPushButton::clicked, this, &ModrinthSharingPage::pushUpdate);
     connect(m_newLinkButton, &QPushButton::clicked, this, &ModrinthSharingPage::newInviteLink);
     connect(m_inviteUserButton, &QPushButton::clicked, this, &ModrinthSharingPage::inviteByUsername);
+    connect(m_inviteFriendButton, &QPushButton::clicked, this, [this]() {
+        auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
+        if (!attachment)
+            return;
+        ModrinthInviteFriendDialog dialog(this, attachment->id, m_instance->name());
+        dialog.exec();
+        loadMembers();
+    });
     connect(m_removeMemberButton, &QPushButton::clicked, this, &ModrinthSharingPage::removeSelectedMember);
     connect(m_autoPushCheck, &QCheckBox::toggled, this, &ModrinthSharingPage::toggleAutoPush);
     connect(m_configsCombo, QOverload<int>::of(&QComboBox::activated), this, &ModrinthSharingPage::configSpecChanged);
@@ -194,8 +206,8 @@ void ModrinthSharingPage::refresh()
         }
         m_configsCombo->setCurrentIndex(idx < 0 ? 0 : idx);
         for (auto* widget : { static_cast<QWidget*>(m_pushButton), static_cast<QWidget*>(m_newLinkButton),
-                              static_cast<QWidget*>(m_inviteUserButton), static_cast<QWidget*>(m_removeMemberButton),
-                              static_cast<QWidget*>(m_stopButton) })
+                              static_cast<QWidget*>(m_inviteUserButton), static_cast<QWidget*>(m_inviteFriendButton),
+                              static_cast<QWidget*>(m_removeMemberButton), static_cast<QWidget*>(m_stopButton) })
             widget->setEnabled(signedIn);
         if (signedIn)
             loadMembers();

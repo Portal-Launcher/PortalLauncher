@@ -1097,6 +1097,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/NewsDialog.h
     ui/dialogs/ModrinthJoinDialog.cpp
     ui/dialogs/ModrinthJoinDialog.h
+    ui/dialogs/ModrinthInviteFriendDialog.cpp
+    ui/dialogs/ModrinthInviteFriendDialog.h
     ui/pages/instance/ModrinthSharingPage.cpp
     ui/pages/instance/ModrinthSharingPage.h
     ui/pages/modplatform/SharedPackPage.cpp

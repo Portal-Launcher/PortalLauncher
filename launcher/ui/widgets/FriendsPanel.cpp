@@ -6,6 +6,9 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 
+#include "Application.h"
+#include "BaseInstance.h"
+#include "InstanceList.h"
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
 #include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
@@ -13,7 +16,20 @@
 #include "ui/dialogs/ProgressDialog.h"
 
 namespace {
-enum ItemRole { UserIdRole = Qt::UserRole, UsernameRole, IncomingRole, AcceptedRole, InviteIdRole, InviteNameRole };
+enum ItemRole {
+    UserIdRole = Qt::UserRole,
+    UsernameRole,
+    IncomingRole,
+    AcceptedRole,
+    InviteIdRole,
+    InviteNameRole,
+    // Set on friend rows when what they are playing matches a pending invite
+    // or an installed instance (the presence socket only carries the name).
+    FriendInviteIdRole,
+    FriendInviteNameRole,
+    LocalInstanceIdRole,
+    LocalInstanceNameRole,
+};
 }
 
 FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
@@ -130,6 +146,8 @@ void FriendsPanel::rebuild()
     for (const auto& f : friends) {
         QTreeWidgetItem* parent = nullptr;
         QString label = f.username;
+        QString friendInviteId, friendInviteName;
+        QString localInstanceId, localInstanceName;
         if (!f.accepted) {
             if (f.incoming) {
                 if (!requests)
@@ -148,6 +166,35 @@ void FriendsPanel::rebuild()
             parent = online;
             onlineCount++;
             label = f.playing.isEmpty() ? f.username : tr("%1 - playing %2").arg(f.username, f.playing);
+            if (!f.playing.isEmpty()) {
+                // The presence socket only tells us the pack's name, so match
+                // pending invites and installed instances by that name.
+                const QString playing = f.playing.trimmed();
+                for (const auto& invite : m_invites) {
+                    if (QString::compare(invite.instanceName.trimmed(), playing, Qt::CaseInsensitive) == 0) {
+                        friendInviteId = invite.instanceId;
+                        friendInviteName = invite.instanceName;
+                        break;
+                    }
+                }
+                auto* instances = APPLICATION->instances();
+                for (int i = 0; i < instances->count(); i++) {
+                    auto* inst = instances->at(i);
+                    if (QString::compare(inst->name().trimmed(), playing, Qt::CaseInsensitive) == 0) {
+                        localInstanceId = inst->id();
+                        localInstanceName = inst->name();
+                        break;
+                    }
+                }
+                if (!localInstanceId.isEmpty()) {
+                    // Already installed: launching beats joining.
+                    friendInviteId.clear();
+                    friendInviteName.clear();
+                    label = tr("%1 - playing %2 (double-click to play too)").arg(f.username, f.playing);
+                } else if (!friendInviteId.isEmpty()) {
+                    label = tr("%1 - playing %2 (double-click to join)").arg(f.username, f.playing);
+                }
+            }
         } else {
             if (!offline)
                 offline = makeSection(tr("Offline"));
@@ -158,6 +205,18 @@ void FriendsPanel::rebuild()
         item->setData(0, UsernameRole, f.username);
         item->setData(0, IncomingRole, f.incoming);
         item->setData(0, AcceptedRole, f.accepted);
+        if (!friendInviteId.isEmpty()) {
+            item->setData(0, FriendInviteIdRole, friendInviteId);
+            item->setData(0, FriendInviteNameRole, friendInviteName);
+            item->setToolTip(0, tr("You have a pending invite for \"%1\" - double-click to join and play along.")
+                                    .arg(friendInviteName));
+        }
+        if (!localInstanceId.isEmpty()) {
+            item->setData(0, LocalInstanceIdRole, localInstanceId);
+            item->setData(0, LocalInstanceNameRole, localInstanceName);
+            item->setToolTip(0, tr("You have \"%1\" installed - double-click to launch it and play along.")
+                                    .arg(localInstanceName));
+        }
         if (f.online)
             item->setForeground(0, QBrush(QColor(0x1b, 0xd9, 0x6a)));
     }
@@ -212,8 +271,31 @@ void FriendsPanel::itemDoubleClicked(QTreeWidgetItem* item, int)
     }
     if (item->data(0, UserIdRole).toString().isEmpty())
         return;
-    if (item->data(0, IncomingRole).toBool())
+    if (item->data(0, IncomingRole).toBool()) {
         acceptRequest(item->data(0, UserIdRole).toString(), item->data(0, UsernameRole).toString());
+        return;
+    }
+    // Friend rows: join or launch what they are playing, if we matched it.
+    const QString localInstanceId = item->data(0, LocalInstanceIdRole).toString();
+    if (!localInstanceId.isEmpty()) {
+        launchLocalInstance(localInstanceId);
+        return;
+    }
+    const QString friendInviteId = item->data(0, FriendInviteIdRole).toString();
+    if (!friendInviteId.isEmpty())
+        joinInvite(friendInviteId, item->data(0, FriendInviteNameRole).toString());
+}
+
+void FriendsPanel::launchLocalInstance(const QString& instanceId)
+{
+    auto* instance = APPLICATION->instances()->getInstanceById(instanceId);
+    if (!instance)
+        return;
+    if (instance->isRunning()) {
+        QMessageBox::information(this, tr("Already running"), tr("\"%1\" is already running.").arg(instance->name()));
+        return;
+    }
+    APPLICATION->launch(instance);
 }
 
 void FriendsPanel::joinInvite(const QString& instanceId, const QString& instanceName)
@@ -275,6 +357,19 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
             ModrinthFriends::get()->removeFriend(userId, [](const QString&) {});
         });
     } else if (accepted) {
+        const QString localInstanceId = item->data(0, LocalInstanceIdRole).toString();
+        const QString localInstanceName = item->data(0, LocalInstanceNameRole).toString();
+        const QString friendInviteId = item->data(0, FriendInviteIdRole).toString();
+        const QString friendInviteName = item->data(0, FriendInviteNameRole).toString();
+        if (!localInstanceId.isEmpty()) {
+            menu.addAction(tr("Launch \"%1\" and play along").arg(localInstanceName), this,
+                           [this, localInstanceId]() { launchLocalInstance(localInstanceId); });
+            menu.addSeparator();
+        } else if (!friendInviteId.isEmpty()) {
+            menu.addAction(tr("Join their pack \"%1\"").arg(friendInviteName), this,
+                           [this, friendInviteId, friendInviteName]() { joinInvite(friendInviteId, friendInviteName); });
+            menu.addSeparator();
+        }
         menu.addAction(tr("Remove friend"), this, [this, userId, username]() {
             if (QMessageBox::question(this, tr("Remove friend"), tr("Remove %1 from your friends?").arg(username)) ==
                 QMessageBox::Yes)

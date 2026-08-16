@@ -150,6 +150,7 @@
     <addaction name="actionEditInstance"/>
     <addaction name="actionShareInstance"/>
     <addaction name="actionCopyShareLink"/>
+    <addaction name="actionInviteFriend"/>
     <addaction name="actionChangeInstGroup"/>
     <addaction name="actionViewSelectedInstFolder"/>
     <addaction name="actionExportInstance"/>
@@ -328,6 +329,17 @@
    </property>
    <property name="toolTip">
     <string>Create a fresh invite link for this shared instance and copy it to the clipboard.</string>
+   </property>
+  </action>
+  <action name="actionInviteFriend">
+   <property name="icon">
+    <iconset theme="accounts"/>
+   </property>
+   <property name="text">
+    <string>Invite a &amp;Friend...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send one of your Modrinth friends an invite to this shared instance.</string>
    </property>
   </action>
   <action name="actionCheckUpdate">
