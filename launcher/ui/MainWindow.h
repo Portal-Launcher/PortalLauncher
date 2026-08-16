@@ -253,6 +253,7 @@ class MainWindow : public QMainWindow {
 
     BaseInstance* m_selectedInstance = nullptr;
     class FriendsPanel* m_friendsPanel = nullptr;
+    class QLineEdit* m_searchBar = nullptr;
     void updateShareQuickActions();
     QString m_currentInstIcon;
 

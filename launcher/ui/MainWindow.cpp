@@ -66,6 +66,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QLineEdit>
 #include <QShortcut>
 #include <QStatusBar>
 #include <QToolBar>
@@ -341,6 +342,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
             [](const QString& groupName) -> bool { return APPLICATION->instances()->isGroupCollapsed(groupName); });
         connect(view, &InstanceView::groupStateChanged, APPLICATION->instances(), &InstanceList::on_GroupStateChanged);
         ui->horizontalLayout->addWidget(view);
+    }
+
+    // Instance search: filters the list as you type. Ctrl+F focuses, Esc clears.
+    {
+        m_searchBar = new QLineEdit(this);
+        m_searchBar->setPlaceholderText(tr("Search instances (Ctrl+F)"));
+        m_searchBar->setClearButtonEnabled(true);
+        m_searchBar->setMaximumWidth(240);
+        ui->mainToolBar->addWidget(m_searchBar);
+        proxymodel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        connect(m_searchBar, &QLineEdit::textChanged, this,
+                [this](const QString& text) { proxymodel->setFilterFixedString(text); });
+
+        auto* focusSearch = new QShortcut(QKeySequence::Find, this);
+        connect(focusSearch, &QShortcut::activated, this, [this]() {
+            m_searchBar->setFocus();
+            m_searchBar->selectAll();
+        });
+        auto* clearSearch = new QShortcut(QKeySequence(Qt::Key_Escape), m_searchBar);
+        clearSearch->setContext(Qt::WidgetShortcut);
+        connect(clearSearch, &QShortcut::activated, m_searchBar, &QLineEdit::clear);
     }
     // The cat background
     {
