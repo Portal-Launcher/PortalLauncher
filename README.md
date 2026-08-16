@@ -11,6 +11,19 @@
   <br />This is a <b>fork</b> of the MultiMC Launcher and is <b>not</b> endorsed by it.
 </p>
 
+## About this fork
+
+This fork adds Modrinth's shared instances feature to Prism, plus some quality of life stuff. It talks to the same Modrinth service the official Modrinth App uses, so packs can be shared between both launchers.
+
+- Share any instance with friends and push updates as you change it. Their copies update automatically before they play, including mods, configs, the pack icon, and Minecraft/loader version bumps
+- Invite people with a modrinth.com/share link or by Modrinth username
+- A friends panel with online status and what people are playing, friend requests, and pack invites you can join right from the panel
+- A "Shared Pack" page in the Add Instance dialog for joining
+- Update changelogs so you can see what changed in a pack before playing
+- Shared/joined badges on instance cards, an unpushed changes warning for hosts, and an instance search bar (Ctrl+F)
+
+Everything lives on the `shared-instances` branch. Sign in with your Modrinth account from the Sharing page of any instance to get started.
+
 ## Installation
 
 <a href="https://repology.org/project/prismlauncher/versions">
