@@ -46,6 +46,7 @@
 #include "BaseInstance.h"
 #include "InstanceList.h"
 #include "InstanceView.h"
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 
 // Origin: Qt
 static void viewItemTextLayout(QTextLayout& textLayout, int lineWidth, qreal& height, qreal& widthUsed)
@@ -134,6 +135,12 @@ void drawBadges(QPainter* painter, const QStyleOptionViewItem& option, BaseInsta
     if (instance->hasUpdateAvailable()) {
         pixmaps.append("checkupdate");
     }
+    // Shared instances: mark hosted and joined packs on their cards.
+    const QString shareRole = ModrinthShared::cachedRole(instance->instanceRoot());
+    if (shareRole == QLatin1String("owner"))
+        pixmaps.append("accounts");
+    else if (shareRole == QLatin1String("member"))
+        pixmaps.append("server");
 
     static const int itemSide = 24;
     static const int spacing = 1;

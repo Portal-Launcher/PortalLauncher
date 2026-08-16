@@ -230,6 +230,8 @@ void ModrinthSharedPublishTask::afterClassify()
     if (!m_force && m_hasAttachment && signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
         // Content unchanged - but the icon may still have changed.
         uploadIconIfChanged([this]() {
+            m_attachment.quickFingerprint =
+                ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), !m_configPaths.isEmpty());
             m_attachment.save(m_instance->instanceRoot());
             setStatus(tr("Everything is already up to date."));
             m_pushed = false;
@@ -427,6 +429,8 @@ void ModrinthSharedPublishTask::finish(int version)
 {
     m_attachment.appliedVersion = version;
     m_attachment.lastPushSignature = computeSignature();
+    m_attachment.quickFingerprint =
+        ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), !m_configPaths.isEmpty());
     m_attachment.save(m_instance->instanceRoot());
     m_pushed = true;
     m_pushedVersion = version;

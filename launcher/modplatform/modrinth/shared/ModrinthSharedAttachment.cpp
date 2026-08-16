@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ModrinthSharedAttachment.h"
 
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
+#include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -35,6 +41,7 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
     att.lastPushSignature = obj.value("lastPushSignature").toString();
     att.iconSha1 = obj.value("iconSha1").toString();
     att.autoPush = obj.value("autoPush").toBool(false);
+    att.quickFingerprint = obj.value("quickFingerprint").toString();
     for (const auto& value : obj.value("lastChangeLog").toArray())
         att.lastChangeLog.append(value.toString());
     att.lastChangeVersion = obj.value("lastChangeVersion").toInt(-1);
@@ -66,6 +73,7 @@ bool Attachment::save(const QString& instanceRoot) const
     obj["lastPushSignature"] = lastPushSignature;
     obj["iconSha1"] = iconSha1;
     obj["autoPush"] = autoPush;
+    obj["quickFingerprint"] = quickFingerprint;
     obj["lastChangeLog"] = QJsonArray::fromStringList(lastChangeLog);
     obj["lastChangeVersion"] = lastChangeVersion;
     QJsonArray files;
@@ -91,6 +99,57 @@ bool Attachment::save(const QString& instanceRoot) const
 void Attachment::remove(const QString& instanceRoot)
 {
     QFile::remove(filePath(instanceRoot));
+}
+
+QString cachedRole(const QString& instanceRoot)
+{
+    struct CacheEntry {
+        QDateTime mtime;
+        qint64 size = -1;
+        QString role;
+    };
+    static QHash<QString, CacheEntry> cache;
+
+    const QFileInfo info(Attachment::filePath(instanceRoot));
+    if (!info.exists()) {
+        cache.remove(instanceRoot);
+        return {};
+    }
+    auto it = cache.constFind(instanceRoot);
+    if (it != cache.constEnd() && it->mtime == info.lastModified() && it->size == info.size())
+        return it->role;
+
+    const auto attachment = Attachment::load(instanceRoot);
+    const CacheEntry entry{ info.lastModified(), info.size(), attachment ? attachment->role : QString() };
+    cache.insert(instanceRoot, entry);
+    return entry.role;
+}
+
+QString quickContentFingerprint(const QString& gameRoot, bool includeConfigs)
+{
+    static const char* CONTENT_FOLDERS[] = { "mods", "resourcepacks", "shaderpacks", "datapacks" };
+    QStringList parts;
+    for (const char* folder : CONTENT_FOLDERS) {
+        QDir dir(gameRoot + '/' + QString::fromUtf8(folder));
+        for (const auto& info : dir.entryInfoList(QDir::Files, QDir::Name)) {
+            parts.append(info.fileName() + '|' + QString::number(info.size()) + '|' +
+                         QString::number(info.lastModified().toSecsSinceEpoch()));
+        }
+    }
+    if (includeConfigs) {
+        QDirIterator it(gameRoot + "/config", QDir::Files, QDirIterator::Subdirectories);
+        QStringList configParts;
+        while (it.hasNext()) {
+            it.next();
+            const auto info = it.fileInfo();
+            configParts.append(info.filePath() + '|' + QString::number(info.size()) + '|' +
+                               QString::number(info.lastModified().toSecsSinceEpoch()));
+        }
+        configParts.sort();
+        parts += configParts;
+    }
+    return QString::fromLatin1(
+        QCryptographicHash::hash(parts.join('\n').toUtf8(), QCryptographicHash::Sha1).toHex());
 }
 
 }  // namespace ModrinthShared

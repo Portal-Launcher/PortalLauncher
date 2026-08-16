@@ -30,6 +30,7 @@ class Attachment {
     QString lastPushSignature;  // owner only: content signature of last push
     QString iconSha1;           // sha1 of the last uploaded (owner) / adopted (member) icon
     bool autoPush = false;      // owner only: push automatically before launching
+    QString quickFingerprint;   // owner only: fast content fingerprint at last push
     QStringList lastChangeLog;  // member: human-readable summary of the last applied update
     int lastChangeVersion = -1;
     QList<ManagedFile> managedFiles;
@@ -43,5 +44,17 @@ class Attachment {
     bool save(const QString& instanceRoot) const;
     static void remove(const QString& instanceRoot);
 };
+
+/**
+ * Cheap, paint-safe lookup of the share role ("owner", "member", or empty).
+ * Backed by an mtime-checked cache so it can run from delegates.
+ */
+QString cachedRole(const QString& instanceRoot);
+
+/**
+ * Fast fingerprint of shareable content (file names/sizes/mtimes only, no
+ * reads). Used to hint owners that they have unpushed changes.
+ */
+QString quickContentFingerprint(const QString& gameRoot, bool includeConfigs);
 
 }  // namespace ModrinthShared

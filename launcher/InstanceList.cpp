@@ -36,6 +36,10 @@
 
 #include "InstanceList.h"
 
+#include <QDateTime>
+#include <QLocale>
+
+#include "MMCTime.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 
 #include <QDebug>
@@ -184,6 +188,11 @@ QVariant InstanceList::data(const QModelIndex& index, int role) const
         }
         case Qt::ToolTipRole: {
             QString tip = pdata->instanceRoot();
+            if (pdata->lastLaunch() > 0)
+                tip += tr("\nLast played: %1")
+                           .arg(QLocale().toString(QDateTime::fromMSecsSinceEpoch(pdata->lastLaunch()), QLocale::ShortFormat));
+            if (pdata->totalTimePlayed() > 0)
+                tip += tr("\nTime played: %1").arg(Time::prettifyDuration(pdata->totalTimePlayed()));
             if (auto attachment = ModrinthShared::Attachment::load(pdata->instanceRoot())) {
                 if (attachment->isOwner())
                     tip += tr("\nShared with friends (hosting, version %1)")

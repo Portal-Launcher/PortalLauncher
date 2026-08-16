@@ -176,8 +176,16 @@ void ModrinthSharingPage::refresh()
     if (!attachment) {
         m_stateLabel->setText(QString());
     } else if (owner) {
-        m_stateLabel->setText(tr("<b>Sharing is on.</b> Last pushed version: %1")
-                                  .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion)));
+        QString state = tr("<b>Sharing is on.</b> Last pushed version: %1")
+                            .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion));
+        if (!attachment->quickFingerprint.isEmpty()) {
+            const QString now = ModrinthShared::quickContentFingerprint(
+                m_instance->gameRoot(), !attachment->configSpec.isEmpty() && attachment->configSpec != QLatin1String("none"));
+            if (now != attachment->quickFingerprint)
+                state += tr("<br><span style=\"color:#e6a23c\">Your local files changed since the last push - push to "
+                            "update your friends.</span>");
+        }
+        m_stateLabel->setText(state);
         m_autoPushCheck->setChecked(attachment->autoPush);
         int idx = m_configsCombo->findData(attachment->configSpec);
         if (idx < 0 && !attachment->configSpec.isEmpty()) {
