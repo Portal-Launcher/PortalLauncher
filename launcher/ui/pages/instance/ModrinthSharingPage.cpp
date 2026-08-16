@@ -274,9 +274,23 @@ void ModrinthSharingPage::pushUpdate()
     ModrinthSharedPublishTask task(m_instance, /*force*/ false, m_configsCombo->currentData().toString());
     ProgressDialog dialog(this);
     dialog.setSkipButton(true, tr("Abort"));
-    if (dialog.execWithTask(&task) != QDialog::Accepted && !task.failReason().isEmpty())
-        QMessageBox::warning(this, tr("Push failed"), task.failReason());
+    const int result = dialog.execWithTask(&task);
     refresh();
+    if (result != QDialog::Accepted && !task.failReason().isEmpty()) {
+        QMessageBox::warning(this, tr("Push failed"), task.failReason());
+    } else if (task.pushed()) {
+        QString text = tr("Version %1 is live. Friends get it automatically the next time they play.")
+                           .arg(task.pushedVersion());
+        if (task.skippedDisabled() > 0)
+            text += "\n\n" + tr("Note: %n disabled mod(s) were NOT shared. Enable them before pushing if friends "
+                                "should have them too.",
+                                nullptr, task.skippedDisabled());
+        QMessageBox::information(this, tr("Update pushed"), text);
+    } else if (task.skippedDisabled() > 0) {
+        m_stateLabel->setText(tr("<b>Everything is already up to date.</b> (%n disabled mod(s) are not part of the "
+                                 "share.)",
+                                 nullptr, task.skippedDisabled()));
+    }
 }
 
 void ModrinthSharingPage::newInviteLink()

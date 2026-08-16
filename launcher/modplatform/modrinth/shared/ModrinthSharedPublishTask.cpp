@@ -126,14 +126,17 @@ void ModrinthSharedPublishTask::scanContent()
 {
     const QString gameRoot = m_instance->gameRoot();
     m_files.clear();
+    m_skippedDisabled = 0;
     for (const auto& folderType : FOLDER_TYPES) {
         QDir dir(FS::PathCombine(gameRoot, folderType.folder));
         if (!dir.exists())
             continue;
         for (const auto& info : dir.entryInfoList(QDir::Files)) {
             const QString name = info.fileName();
-            if (name.endsWith(".disabled", Qt::CaseInsensitive))
+            if (name.endsWith(".disabled", Qt::CaseInsensitive)) {
+                m_skippedDisabled++;
                 continue;
+            }
             if (!name.endsWith(folderType.extension, Qt::CaseInsensitive))
                 continue;
             ContentFile file;

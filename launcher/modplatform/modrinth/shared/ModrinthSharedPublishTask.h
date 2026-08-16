@@ -26,6 +26,7 @@ class ModrinthSharedPublishTask : public Task {
 
     bool pushed() const { return m_pushed; }
     int pushedVersion() const { return m_pushedVersion; }
+    int skippedDisabled() const { return m_skippedDisabled; }
 
    protected:
     void executeTask() override;
@@ -80,4 +81,5 @@ class ModrinthSharedPublishTask : public Task {
 
     bool m_pushed = false;
     int m_pushedVersion = -1;
+    int m_skippedDisabled = 0;
 };
