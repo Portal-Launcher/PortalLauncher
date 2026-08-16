@@ -104,6 +104,7 @@
 #include <QStringList>
 #include <QStringLiteral>
 #include <QStyleFactory>
+#include <QTimer>
 #include <QTranslator>
 #include <QWindow>
 
@@ -1394,7 +1395,15 @@ void Application::performMainStartupAction()
     {  // delete instances tmp dirctory
         auto instDir = m_settings->get("InstanceDir").toString();
         const QString tempRoot = FS::PathCombine(instDir, ".tmp");
-        FS::deletePath(tempRoot);
+        if (m_urlsToImport.isEmpty()) {
+            // Leftovers from aborted instance creations can be large, so defer the cleanup to the
+            // event loop instead of delaying the first paint of the main window.
+            QTimer::singleShot(0, this, [tempRoot] { FS::deletePath(tempRoot); });
+        } else {
+            // An import requested on the command line may stage new files under the tmp directory
+            // right away, so clean up synchronously before processing it.
+            FS::deletePath(tempRoot);
+        }
     }
 
     if (!m_urlsToImport.isEmpty()) {

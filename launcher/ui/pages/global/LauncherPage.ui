@@ -543,6 +543,9 @@
               <height>0</height>
              </size>
             </property>
+            <property name="toolTip">
+             <string>Maximum number of files downloaded at the same time. Lower this if downloads fail or your connection is unstable.</string>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -576,6 +579,9 @@
           </item>
           <item row="1" column="0">
            <widget class="QLabel" name="numberOfConcurrentDownloadsLabel">
+            <property name="toolTip">
+             <string>Maximum number of files downloaded at the same time. Lower this if downloads fail or your connection is unstable.</string>
+            </property>
             <property name="text">
              <string>Concurrent Download Limit:</string>
             </property>

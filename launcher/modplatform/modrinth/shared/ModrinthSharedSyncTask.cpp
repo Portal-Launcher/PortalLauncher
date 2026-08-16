@@ -308,7 +308,8 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
             QFile::remove(FS::PathCombine(gameRoot, old.rel + ".disabled"));
     }
 
-    m_downloadJob = makeShared<NetJob>(tr("Shared pack update"), APPLICATION->network(), 6);
+    // No explicit limit: NetJob uses the NumberOfConcurrentDownloads setting.
+    m_downloadJob = makeShared<NetJob>(tr("Shared pack update"), APPLICATION->network());
     int queued = 0;
     for (const auto& target : m_targets) {
         const QString abs = FS::PathCombine(gameRoot, target.rel);
