@@ -169,6 +169,8 @@ class MainWindow : public QMainWindow {
     void on_actionJoinSharedPack_triggered();
     void on_actionCopyShareLink_triggered();
     void on_actionInviteFriend_triggered();
+    void on_actionUpdatePack_triggered();
+    void on_actionResumeLast_triggered();
 
     void on_actionCreateInstanceShortcut_triggered();
 
@@ -256,6 +258,7 @@ class MainWindow : public QMainWindow {
     class FriendsPanel* m_friendsPanel = nullptr;
     class QLineEdit* m_searchBar = nullptr;
     void updateShareQuickActions();
+    void updateResumeButton();
     QString m_currentInstIcon;
 
     // managed by the application object

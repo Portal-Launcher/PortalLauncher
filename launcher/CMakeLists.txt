@@ -504,6 +504,9 @@ set(API_SOURCES
 
     modplatform/CheckUpdateTask.h
 
+    modplatform/PackUpdateChecker.h
+    modplatform/PackUpdateChecker.cpp
+
     modplatform/flame/FlameAPI.h
     modplatform/flame/FlameAPI.cpp
     modplatform/modrinth/ModrinthAPI.h

@@ -21,6 +21,8 @@ This fork adds Modrinth's shared instances feature to Prism, plus some quality o
 - A "Shared Pack" page in the Add Instance dialog for joining
 - Update changelogs so you can see what changed in a pack before playing
 - Shared/joined badges on instance cards, an unpushed changes warning for hosts, and an instance search bar (Ctrl+F)
+- Modpack update notifications: instances installed from Modrinth or CurseForge get an update badge when the pack author publishes a new version, with a right-click shortcut to update
+- A resume button on the toolbar that jumps back into the instance you last played
 
 Everything lives on the `shared-instances` branch. Sign in with your Modrinth account from the Sharing page of any instance to get started.
 

@@ -201,6 +201,10 @@ QVariant InstanceList::data(const QModelIndex& index, int role) const
                     tip += tr("\nShared pack (joined, version %1)")
                                .arg(attachment->appliedVersion < 0 ? tr("none") : QString::number(attachment->appliedVersion));
             }
+            if (pdata->hasUpdateAvailable()) {
+                const QString version = pdata->updateAvailableVersion();
+                tip += version.isEmpty() ? tr("\nPack update available") : tr("\nPack update available: %1").arg(version);
+            }
             return tip;
         }
         case Qt::DecorationRole: {

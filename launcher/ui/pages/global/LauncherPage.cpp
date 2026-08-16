@@ -246,6 +246,7 @@ void LauncherPage::applySettings()
     s->set("ModDependenciesDisabled", !ui->dependenciesEnableBtn->isChecked());
     s->set("ShowModIncompat", ui->showModIncompatCheckBox->isChecked());
     s->set("SkipModpackUpdatePrompt", !ui->modpackUpdatePromptBtn->isChecked());
+    s->set("CheckPackUpdates", ui->packUpdatesCheckBox->isChecked());
 }
 void LauncherPage::loadSettings()
 {
@@ -296,6 +297,7 @@ void LauncherPage::loadSettings()
     ui->dependenciesEnableBtn->setChecked(!s->get("ModDependenciesDisabled").toBool());
     ui->showModIncompatCheckBox->setChecked(s->get("ShowModIncompat").toBool());
     ui->modpackUpdatePromptBtn->setChecked(!s->get("SkipModpackUpdatePrompt").toBool());
+    ui->packUpdatesCheckBox->setChecked(s->get("CheckPackUpdates").toBool());
 }
 
 void LauncherPage::retranslate()

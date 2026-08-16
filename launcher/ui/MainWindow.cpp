@@ -105,6 +105,7 @@
 #include <QClipboard>
 #include <QTimer>
 #include <QToolTip>
+#include "modplatform/PackUpdateChecker.h"
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
@@ -460,6 +461,21 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         QTimer::singleShot(15000, this, [this]() { ForkUpdater::check(this, /*silent*/ true); });
     }
 
+    // Look for modpack updates a little after startup, like the Modrinth App does.
+    QTimer::singleShot(10000, this, [] { PackUpdateChecker::checkAll(); });
+
+    // Keep the resume button pointing at the most recently played instance.
+    {
+        auto instanceList = APPLICATION->instances();
+        connect(instanceList, &InstanceList::dataChanged, this, [this] { updateResumeButton(); });
+        connect(instanceList, &InstanceList::rowsInserted, this, [this] { updateResumeButton(); });
+        connect(instanceList, &InstanceList::rowsRemoved, this, [this] { updateResumeButton(); });
+        connect(instanceList, &InstanceList::modelReset, this, [this] { updateResumeButton(); });
+    }
+
+    // Refresh instance quick actions (share, pack update) when the File menu opens.
+    connect(ui->fileMenu, &QMenu::aboutToShow, this, [this] { updateShareQuickActions(); });
+
     // Modrinth friends panel (who is online, what they are playing).
     {
         m_friendsPanel = new FriendsPanel(this);
@@ -479,6 +495,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionUndoTrashInstance, &QAction::triggered, this, &MainWindow::undoTrashInstance);
 
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
+
+    updateResumeButton();
 
     // removing this looks stupid
     view->setFocus();
@@ -1512,6 +1530,46 @@ void MainWindow::updateShareQuickActions()
     }
     ui->actionCopyShareLink->setVisible(owner);
     ui->actionInviteFriend->setVisible(owner);
+    ui->actionUpdatePack->setVisible(m_selectedInstance && m_selectedInstance->isManagedPack() &&
+                                     m_selectedInstance->hasUpdateAvailable());
+}
+
+void MainWindow::updateResumeButton()
+{
+    auto instances = APPLICATION->instances();
+    BaseInstance* latest = nullptr;
+    for (int i = 0; i < instances->count(); i++) {
+        auto inst = instances->at(i);
+        if (inst->lastLaunch() <= 0 || inst->isRunning())
+            continue;
+        if (!latest || inst->lastLaunch() > latest->lastLaunch())
+            latest = inst;
+    }
+    if (!latest) {
+        ui->actionResumeLast->setVisible(false);
+        return;
+    }
+    QString name = latest->name();
+    if (name.length() > 32)
+        name = name.left(29) + "...";
+    name.replace("&", "&&");
+    ui->actionResumeLast->setText(tr("Play %1").arg(name));
+    ui->actionResumeLast->setToolTip(tr("Jump back into %1, the instance you last played.").arg(latest->name()));
+    ui->actionResumeLast->setData(latest->id());
+    ui->actionResumeLast->setVisible(true);
+}
+
+void MainWindow::on_actionResumeLast_triggered()
+{
+    auto inst = APPLICATION->instances()->getInstanceById(ui->actionResumeLast->data().toString());
+    if (inst)
+        APPLICATION->launch(inst);
+}
+
+void MainWindow::on_actionUpdatePack_triggered()
+{
+    if (m_selectedInstance)
+        APPLICATION->showInstanceWindow(m_selectedInstance, "managed_pack");
 }
 
 void MainWindow::on_actionManageAccounts_triggered()

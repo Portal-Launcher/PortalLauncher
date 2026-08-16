@@ -898,6 +898,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         }
         m_settings->registerSetting("FallbackMRBlockedMods", true);
         m_settings->registerSetting("ModrinthToken", "");
+        m_settings->registerSetting("CheckPackUpdates", true);
         m_settings->registerSetting("UserAgentOverride", "");
 
         // FTBApp instances

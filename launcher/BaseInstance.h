@@ -248,6 +248,9 @@ class BaseInstance : public QObject {
         }
     }
 
+    QString updateAvailableVersion() const { return m_updateAvailableVersion; }
+    void setUpdateAvailableVersion(const QString& version) { m_updateAvailableVersion = version; }
+
     bool hasCrashed() const { return m_crashed; }
     void setCrashed(bool value)
     {
@@ -318,6 +321,7 @@ class BaseInstance : public QObject {
     Status m_status = Status::Present;
     bool m_crashed = false;
     bool m_hasUpdate = false;
+    QString m_updateAvailableVersion;
     bool m_hasBrokenVersion = false;
 
     SettingsObject* m_global_settings;

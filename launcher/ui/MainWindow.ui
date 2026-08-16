@@ -50,6 +50,7 @@
     <bool>false</bool>
    </attribute>
    <addaction name="actionAddInstance"/>
+   <addaction name="actionResumeLast"/>
    <addaction name="separator"/>
    <addaction name="actionFoldersButton"/>
    <addaction name="actionSettings"/>
@@ -148,6 +149,7 @@
     <addaction name="actionKillInstance"/>
     <addaction name="separator"/>
     <addaction name="actionEditInstance"/>
+    <addaction name="actionUpdatePack"/>
     <addaction name="actionShareInstance"/>
     <addaction name="actionCopyShareLink"/>
     <addaction name="actionInviteFriend"/>
@@ -307,6 +309,34 @@
    </property>
    <property name="toolTip">
     <string>Join a modpack a friend shared with you via a modrinth.com/share link.</string>
+   </property>
+  </action>
+  <action name="actionResumeLast">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="icon">
+    <iconset theme="launch"/>
+   </property>
+   <property name="text">
+    <string>Resume</string>
+   </property>
+   <property name="toolTip">
+    <string>Jump back into the instance you last played.</string>
+   </property>
+  </action>
+  <action name="actionUpdatePack">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="icon">
+    <iconset theme="checkupdate"/>
+   </property>
+   <property name="text">
+    <string>Update Pac&amp;k...</string>
+   </property>
+   <property name="toolTip">
+    <string>A newer version of this modpack is available. Open the pack page to update.</string>
    </property>
   </action>
   <action name="actionShareInstance">

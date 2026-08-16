@@ -441,6 +441,16 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QCheckBox" name="packUpdatesCheckBox">
+            <property name="toolTip">
+             <string>Check installed Modrinth and CurseForge modpacks for new versions after starting the launcher, and mark instances that have an update.</string>
+            </property>
+            <property name="text">
+             <string>Check for modpack updates on launch</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -686,6 +696,7 @@
   <tabstop>dependenciesEnableBtn</tabstop>
   <tabstop>showModIncompatCheckBox</tabstop>
   <tabstop>modpackUpdatePromptBtn</tabstop>
+  <tabstop>packUpdatesCheckBox</tabstop>
   <tabstop>downloadGameFilesBtn</tabstop>
   <tabstop>lineLimitSpinBox</tabstop>
   <tabstop>checkStopLogging</tabstop>
