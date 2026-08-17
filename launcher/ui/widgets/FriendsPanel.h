@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <QAction>
 #include <QDockWidget>
 #include <QLabel>
 #include <QLineEdit>
@@ -19,6 +20,14 @@ class FriendsPanel : public QDockWidget {
     Q_OBJECT
    public:
     explicit FriendsPanel(QWidget* parent = nullptr);
+
+    /** Action that shows and hides the panel.
+     *
+     *  Not QDockWidget::toggleViewAction(): Qt disables that one unless the
+     *  dock is closable, and this panel deliberately has no close or float
+     *  button, which would leave the Friends button permanently greyed out.
+     */
+    QAction* viewAction() const { return m_viewAction; }
 
    protected:
     void showEvent(QShowEvent* event) override;
@@ -43,6 +52,7 @@ class FriendsPanel : public QDockWidget {
     };
     QList<Invite> m_invites;
 
+    QAction* m_viewAction;
     QLabel* m_headerLabel;
     QToolButton* m_refreshButton;
     QPushButton* m_signInButton;

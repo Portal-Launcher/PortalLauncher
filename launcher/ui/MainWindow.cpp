@@ -526,7 +526,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_friendsPanel = new FriendsPanel(this);
         addDockWidget(Qt::RightDockWidgetArea, m_friendsPanel);
         m_friendsPanel->hide();  // restored by MainWindowState if it was open
-        auto* friendsAction = m_friendsPanel->toggleViewAction();
+        auto* friendsAction = m_friendsPanel->viewAction();
         friendsAction->setIcon(QIcon::fromTheme("accounts"));
         friendsAction->setText(tr("Friends"));
         friendsAction->setToolTip(tr("Show your Modrinth friends, who is online, and what they are playing."));
@@ -601,6 +601,13 @@ QMenu* MainWindow::createPopupMenu()
 {
     QMenu* filteredMenu = QMainWindow::createPopupMenu();
     filteredMenu->removeAction(ui->mainToolBar->toggleViewAction());
+
+    if (m_friendsPanel) {
+        // Qt puts the dock's built-in toggle here, which is greyed out because
+        // the panel is not closable; swap in the one that actually works.
+        filteredMenu->removeAction(m_friendsPanel->toggleViewAction());
+        filteredMenu->addAction(m_friendsPanel->viewAction());
+    }
 
     filteredMenu->addAction(ui->actionToggleStatusBar);
     filteredMenu->addAction(ui->actionLockToolbars);

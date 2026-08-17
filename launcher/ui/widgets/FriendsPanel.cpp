@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "FriendsPanel.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QEvent>
+#include <QSignalBlocker>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QMessageBox>
@@ -41,6 +43,18 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
     // No close X or float button: the Friends toolbar button is the one way
     // to show and hide the panel, so it can never get lost as a stray window.
     setFeatures(QDockWidget::DockWidgetMovable);
+    // Qt greys out toggleViewAction() for docks that are not closable, so this
+    // panel needs its own action or the Friends button cannot be clicked.
+    m_viewAction = new QAction(tr("Friends"), this);
+    m_viewAction->setCheckable(true);
+    connect(m_viewAction, &QAction::toggled, this, [this](bool checked) {
+        if (isVisible() != checked)
+            setVisible(checked);
+    });
+    connect(this, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        QSignalBlocker blocker(m_viewAction);  // do not bounce back into setVisible
+        m_viewAction->setChecked(visible);
+    });
     // Window states saved before the popout button was removed can restore the
     // panel floating (possibly offscreen, looking like the toggle is broken);
     // snap it back into the dock whenever anything tries to float it.
