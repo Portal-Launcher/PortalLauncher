@@ -62,7 +62,9 @@ enum InstSortMode {
     // Sort alphabetically by name.
     Sort_Name,
     // Sort by which instance was launched most recently.
-    Sort_LastLaunch
+    Sort_LastLaunch,
+    // The order the user made by dragging instances around.
+    Sort_Custom
 };
 
 LauncherPage::LauncherPage(QWidget* parent) : QWidget(parent), ui(new Ui::LauncherPage)
@@ -71,6 +73,7 @@ LauncherPage::LauncherPage(QWidget* parent) : QWidget(parent), ui(new Ui::Launch
 
     ui->sortingModeGroup->setId(ui->sortByNameBtn, Sort_Name);
     ui->sortingModeGroup->setId(ui->sortLastLaunchedBtn, Sort_LastLaunch);
+    ui->sortingModeGroup->setId(ui->sortCustomBtn, Sort_Custom);
 
     loadSettings();
 
@@ -197,7 +200,9 @@ void LauncherPage::applySettings()
     if (APPLICATION->updater()) {
         APPLICATION->updater()->setAutomaticallyChecksForUpdates(ui->autoUpdateCheckBox->isChecked());
         APPLICATION->updater()->setUpdateCheckInterval(ui->updateIntervalSpinBox->value() * 3600);
+        APPLICATION->updater()->setBetaAllowed(ui->betaChannelCheckBox->isChecked());
     }
+    s->set("UpdaterBetaChannel", ui->betaChannelCheckBox->isChecked());
 
     s->set("MenuBarInsteadOfToolBar", ui->preferMenuBarCheckBox->isChecked());
 
@@ -226,6 +231,9 @@ void LauncherPage::applySettings()
     switch (sortMode) {
         case Sort_LastLaunch:
             s->set("InstSortMode", "LastLaunch");
+            break;
+        case Sort_Custom:
+            s->set("InstSortMode", "Custom");
             break;
         case Sort_Name:
         default:
@@ -256,6 +264,7 @@ void LauncherPage::loadSettings()
         ui->autoUpdateCheckBox->setChecked(APPLICATION->updater()->getAutomaticallyChecksForUpdates());
         ui->updateIntervalSpinBox->setValue(APPLICATION->updater()->getUpdateCheckInterval() / 3600);
     }
+    ui->betaChannelCheckBox->setChecked(s->get("UpdaterBetaChannel").toBool());
 
     ui->preferMenuBarCheckBox->setChecked(s->get("MenuBarInsteadOfToolBar").toBool());
 
@@ -282,6 +291,8 @@ void LauncherPage::loadSettings()
     QString sortMode = s->get("InstSortMode").toString();
     if (sortMode == "LastLaunch") {
         ui->sortLastLaunchedBtn->setChecked(true);
+    } else if (sortMode == "Custom") {
+        ui->sortCustomBtn->setChecked(true);
     } else {
         ui->sortByNameBtn->setChecked(true);
     }

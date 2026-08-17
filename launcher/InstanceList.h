@@ -36,11 +36,13 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QPair>
 #include <QSet>
 #include <QStack>
+#include <QStringList>
 
 #include "BaseInstance.h"
 
@@ -113,6 +115,19 @@ class InstanceList : public QAbstractListModel {
 
     GroupId getInstanceGroup(const InstanceId& id) const;
     void setInstanceGroup(const InstanceId& id, GroupId name);
+
+    /// position of the instance in the drag-to-arrange order; INT_MAX when it was never placed
+    int customOrderRank(const InstanceId& id) const;
+    /**
+     * Drop @draggedId into @targetGroup, right before @anchorId (or at the end of the
+     * group when @anchorId is empty), and make the custom order the active sort mode.
+     * @displayedIds is everything the view currently shows, in shown order - it seeds
+     * the custom order the first time so nothing except the dragged instance moves.
+     */
+    void arrangeCustomOrder(const QStringList& displayedIds,
+                            const InstanceId& draggedId,
+                            const GroupId& targetGroup,
+                            const InstanceId& anchorId);
 
     void deleteGroup(const GroupId& name);
     void renameGroup(const GroupId& src, const GroupId& dst);
@@ -187,6 +202,7 @@ class InstanceList : public QAbstractListModel {
 
     void increaseGroupCount(const QString& group);
     void decreaseGroupCount(const QString& group);
+    void rebuildCustomOrderRank();
 
    private:
     int m_watchLevel = 0;
@@ -202,6 +218,9 @@ class InstanceList : public QAbstractListModel {
     // FIXME: this is so inefficient that looking at it is almost painful.
     QSet<QString> m_collapsedGroups;
     QMap<InstanceId, GroupId> m_instanceGroupIndex;
+    // drag-to-arrange order; the list is what gets saved, the hash is for O(1) rank lookups
+    QStringList m_customOrder;
+    QHash<InstanceId, int> m_customOrderRank;
     QSet<InstanceId> instanceSet;
     bool m_groupsLoaded = false;
     bool m_instancesProbed = false;

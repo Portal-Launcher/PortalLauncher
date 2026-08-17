@@ -36,8 +36,12 @@
 
 #include "InstanceList.h"
 
+#include <QCollator>
 #include <QDateTime>
 #include <QLocale>
+
+#include <climits>
+#include <utility>
 
 #include "MMCTime.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
@@ -297,6 +301,83 @@ void InstanceList::setInstanceGroup(const InstanceId& id, GroupId name)
 QStringList InstanceList::getGroups()
 {
     return m_groupNameCache.keys();
+}
+
+int InstanceList::customOrderRank(const InstanceId& id) const
+{
+    return m_customOrderRank.value(id, INT_MAX);
+}
+
+void InstanceList::rebuildCustomOrderRank()
+{
+    m_customOrderRank.clear();
+    m_customOrderRank.reserve(m_customOrder.size());
+    for (int i = 0; i < m_customOrder.size(); i++)
+        m_customOrderRank.insert(m_customOrder.at(i), i);
+}
+
+void InstanceList::arrangeCustomOrder(const QStringList& displayedIds,
+                                      const InstanceId& draggedId,
+                                      const GroupId& targetGroup,
+                                      const InstanceId& anchorId)
+{
+    if (draggedId.isEmpty() || draggedId == anchorId || !getInstanceById(draggedId))
+        return;
+
+    // Start from where every instance sits right now. When custom sorting is
+    // already active that is the stored order; otherwise seed it from what the
+    // user is looking at, so the first drag moves exactly one instance.
+    const bool alreadyCustom = m_globalSettings->get("InstSortMode").toString() == "Custom";
+    QStringList order;
+    QSet<QString> seen;
+    for (const auto& id : (alreadyCustom ? std::as_const(m_customOrder) : displayedIds)) {
+        if (instanceSet.contains(id) && !seen.contains(id)) {
+            order.append(id);
+            seen.insert(id);
+        }
+    }
+    // Instances the seed missed (hidden by the search filter, or added since):
+    // give them a stable spot at the end, in name order.
+    QList<BaseInstance*> unranked;
+    for (auto& inst : m_instances) {
+        if (!seen.contains(inst->id()))
+            unranked.append(inst.get());
+    }
+    if (!unranked.isEmpty()) {
+        QCollator collator(QLocale::system());
+        collator.setNumericMode(true);
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        std::sort(unranked.begin(), unranked.end(),
+                  [&collator](BaseInstance* a, BaseInstance* b) { return collator.compare(a->name(), b->name()) < 0; });
+        for (auto* inst : unranked)
+            order.append(inst->id());
+    }
+
+    setInstanceGroup(draggedId, targetGroup);  // no-op when the group did not change
+
+    order.removeAll(draggedId);
+    int at = anchorId.isEmpty() ? -1 : static_cast<int>(order.indexOf(anchorId));
+    if (at < 0) {
+        // No anchor: place it after the last member of its new group. Only the
+        // relative order inside a group matters to the view, so the very end
+        // works fine when the group has no other members.
+        at = static_cast<int>(order.size());
+        for (int i = static_cast<int>(order.size()) - 1; i >= 0; i--) {
+            if (getInstanceGroup(order.at(i)) == targetGroup) {
+                at = i + 1;
+                break;
+            }
+        }
+    }
+    order.insert(at, draggedId);
+
+    m_customOrder = order;
+    rebuildCustomOrderRank();
+    if (!alreadyCustom)
+        m_globalSettings->set("InstSortMode", "Custom");
+    saveGroupList();
+    if (count() > 0)
+        emit dataChanged(index(0), index(count() - 1));  // empty roles: make the proxy re-sort everything
 }
 
 void InstanceList::deleteGroup(const GroupId& name)
@@ -778,6 +859,15 @@ void InstanceList::saveGroupList()
         groupsArr.insert(name, groupObj);
     }
     toplevel.insert("groups", groupsArr);
+    // drag-to-arrange order (used when the sorting mode is Custom)
+    if (!m_customOrder.isEmpty()) {
+        QJsonArray orderArr;
+        for (const auto& id : m_customOrder) {
+            if (instanceSet.contains(id))
+                orderArr.append(QJsonValue(id));
+        }
+        toplevel.insert("customOrder", orderArr);
+    }
     // empty string represents ungrouped "group"
     if (m_collapsedGroups.contains("")) {
         QJsonObject ungrouped;
@@ -833,6 +923,19 @@ void InstanceList::loadGroupList()
     // Make sure the format version matches, otherwise fail.
     if (rootObj.value("formatVersion").toVariant().toInt() != GROUP_FILE_FORMAT_VERSION)
         return;
+
+    // drag-to-arrange order; optional, parsed before the groups so a broken
+    // groups object cannot wipe it
+    m_customOrder.clear();
+    QSet<QString> orderSeen;
+    for (auto value : rootObj.value("customOrder").toArray()) {
+        const QString id = value.toString();
+        if (!id.isEmpty() && !orderSeen.contains(id)) {
+            m_customOrder.append(id);
+            orderSeen.insert(id);
+        }
+    }
+    rebuildCustomOrderRank();
 
     // Get the groups. if it's not an object, fail
     if (!rootObj.value("groups").isObject()) {

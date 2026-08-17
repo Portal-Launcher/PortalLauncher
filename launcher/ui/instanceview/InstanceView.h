@@ -94,6 +94,8 @@ class InstanceView : public QAbstractItemView {
    signals:
     void droppedURLs(QList<QUrl> urls);
     void groupStateChanged(QString group, bool collapsed);
+    /// a drag-drop just switched the sorting mode over to the custom order
+    void customSortEngaged();
 
    protected:
     bool isIndexHidden(const QModelIndex& index) const override;
@@ -138,6 +140,7 @@ class InstanceView : public QAbstractItemView {
     VisualGroup* m_pressedCategory;
     QItemSelectionModel::SelectionFlag m_ctrlDragSelectionFlag;
     QPoint m_lastDragPosition;
+    QRect m_dropIndicatorRect;  // geometry coordinates; null while no reorder drag hovers the view
 
     VisualGroup* category(const QModelIndex& index) const;
     VisualGroup* category(const QString& cat) const;
@@ -156,6 +159,16 @@ class InstanceView : public QAbstractItemView {
     bool isDragEventAccepted(QDropEvent* event);
 
     std::pair<VisualGroup*, VisualGroup::HitResults> rowDropPos(const QPoint& pos);
+
+    // where an internal instance drag would land
+    struct ReorderDropPos {
+        VisualGroup* group = nullptr;
+        int insertIndex = -1;  // slot among the group's items; == item count for "at the end"
+        QRect indicator;       // geometry coordinates
+    };
+    ReorderDropPos reorderDropPos(const QPoint& pos) const;
+    void updateReorderIndicator(QDropEvent* event);
+    void clearReorderIndicator();
 
     QPoint offset() const;
 };

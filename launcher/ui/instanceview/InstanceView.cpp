@@ -546,36 +546,19 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
         itemDelegate()->paint(&painter, option, index);
     }
 
-    /*
-     * Drop indicators for manual reordering...
-     */
-#if 0
-    if (!m_lastDragPosition.isNull())
-    {
-        std::pair<VisualGroup *, VisualGroup::HitResults> pair = rowDropPos(m_lastDragPosition);
-        VisualGroup *category = pair.first;
-        VisualGroup::HitResults row = pair.second;
-        if (category)
-        {
-            int internalRow = row - category->firstItemIndex;
-            QLine line;
-            if (internalRow >= category->numItems())
-            {
-                QRect toTheRightOfRect = visualRect(category->lastItem());
-                line = QLine(toTheRightOfRect.topRight(), toTheRightOfRect.bottomRight());
-            }
-            else
-            {
-                QRect toTheLeftOfRect = visualRect(model()->index(row, 0));
-                line = QLine(toTheLeftOfRect.topLeft(), toTheLeftOfRect.bottomLeft());
-            }
+    // Drop indicator for drag-to-arrange: a slim bar in the gap where the
+    // dragged instance would land.
+    if (!m_dropIndicatorRect.isNull()) {
+        QRect indicator = m_dropIndicatorRect.translated(-offset());
+        if (event->rect().intersects(indicator.adjusted(-3, -3, 3, 3))) {
             painter.save();
-            painter.setPen(QPen(Qt::black, 3));
-            painter.drawLine(line);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(palette().color(QPalette::Highlight));
+            painter.drawRoundedRect(indicator, 2.0, 2.0);
             painter.restore();
         }
     }
-#endif
 }
 
 void InstanceView::resizeEvent([[maybe_unused]] QResizeEvent* event)
@@ -598,7 +581,7 @@ void InstanceView::dragEnterEvent(QDragEnterEvent* event)
         return;
     }
     m_lastDragPosition = event->position().toPoint() + offset();
-    viewport()->update();
+    updateReorderIndicator(event);
     event->accept();
 }
 
@@ -610,7 +593,8 @@ void InstanceView::dragMoveEvent(QDragMoveEvent* event)
         return;
     }
     m_lastDragPosition = event->position().toPoint() + offset();
-    viewport()->update();
+    updateReorderIndicator(event);
+    startAutoScroll();
     event->accept();
 }
 
@@ -618,8 +602,9 @@ void InstanceView::dragLeaveEvent([[maybe_unused]] QDragLeaveEvent* event)
 {
     executeDelayedItemsLayout();
 
+    stopAutoScroll();
     m_lastDragPosition = QPoint();
-    viewport()->update();
+    clearReorderIndicator();
 }
 
 void InstanceView::dropEvent(QDropEvent* event)
@@ -627,6 +612,7 @@ void InstanceView::dropEvent(QDropEvent* event)
     executeDelayedItemsLayout();
 
     m_lastDragPosition = QPoint();
+    clearReorderIndicator();
 
     stopAutoScroll();
     setState(NoState);
@@ -635,22 +621,38 @@ void InstanceView::dropEvent(QDropEvent* event)
 
     if (event->source() == this) {
         if (event->possibleActions() & Qt::MoveAction) {
-            std::pair<VisualGroup*, VisualGroup::HitResults> dropPos = rowDropPos(event->position().toPoint());
-            const VisualGroup* group = dropPos.first;
-            auto hitResult = dropPos.second;
-
-            if (hitResult == VisualGroup::HitResult::NoHit) {
-                viewport()->update();
+            auto drop = reorderDropPos(event->position().toPoint() + offset());
+            if (!drop.group)
                 return;
-            }
+
             auto instanceId = QString::fromUtf8(mimedata->data("application/x-instanceid"));
-            auto instanceList = APPLICATION->instances();
-            instanceList->setInstanceGroup(instanceId, group->text);
+            if (instanceId.isEmpty())
+                return;
+
+            // the instance whose spot the dragged one takes; empty = end of the group
+            QString anchorId;
+            auto groupItems = drop.group->items();
+            if (drop.insertIndex >= 0 && drop.insertIndex < groupItems.size())
+                anchorId = groupItems.at(drop.insertIndex).data(InstanceList::InstanceIDRole).toString();
+
             event->setDropAction(Qt::MoveAction);
             event->accept();
+            if (anchorId == instanceId)
+                return;  // dropped back onto its own spot
 
-            updateGeometries();
-            viewport()->update();
+            // everything currently on screen, in shown order, to seed the
+            // custom order the first time so only the dragged instance moves
+            QStringList displayedIds;
+            displayedIds.reserve(model()->rowCount());
+            for (auto group : m_groups) {
+                for (const auto& index : group->items())
+                    displayedIds.append(index.data(InstanceList::InstanceIDRole).toString());
+            }
+
+            const bool wasCustom = APPLICATION->settings()->get("InstSortMode").toString() == "Custom";
+            APPLICATION->instances()->arrangeCustomOrder(displayedIds, instanceId, drop.group->text, anchorId);
+            if (!wasCustom)
+                emit customSortEngaged();
         }
         return;
     }
@@ -802,6 +804,79 @@ std::pair<VisualGroup*, VisualGroup::HitResults> InstanceView::rowDropPos(const 
     VisualGroup::HitResults hitResult;
     auto group = categoryAt(pos + offset(), hitResult);
     return std::make_pair(group, hitResult);
+}
+
+auto InstanceView::reorderDropPos(const QPoint& pos) const -> ReorderDropPos
+{
+    ReorderDropPos out;
+    VisualGroup::HitResults hitResult = VisualGroup::NoHit;
+    VisualGroup* group = categoryAt(pos, hitResult);
+    if (!group)
+        return out;
+
+    const int slotWidth = itemWidth() + m_spacing;
+    const int contentTop = group->verticalPosition() + group->headerHeight() + 5;
+
+    if (hitResult & VisualGroup::HeaderHit) {
+        // dropping on the header slides the instance in at the front
+        out.group = group;
+        out.insertIndex = 0;
+        out.indicator = QRect(m_leftMargin, contentTop - 4, contentWidth(), 3);
+        return out;
+    }
+    if (!(hitResult & VisualGroup::BodyHit))
+        return out;
+
+    int itemsBefore = 0;
+    for (int r = 0; r < group->rows.size(); r++) {
+        const VisualRow& row = group->rows.at(r);
+        const int rowTop = contentTop + row.top;
+        const bool lastRow = (r == group->rows.size() - 1);
+        if (pos.y() > rowTop + row.height && !lastRow) {
+            itemsBefore += row.size();
+            continue;
+        }
+        // the gap between two items (or the outer edge) nearest to the cursor
+        int slot = 0;
+        if (row.size() > 0)
+            slot = qBound(0, qRound((qreal)(pos.x() - m_spacing) / (qreal)slotWidth), row.size());
+        if (lastRow && pos.y() > rowTop + row.height)
+            slot = row.size();  // below the last row: land at the very end
+        out.group = group;
+        out.insertIndex = itemsBefore + slot;
+        out.indicator = QRect(m_spacing + slot * slotWidth - (m_spacing + 3) / 2, rowTop, 3, row.height);
+        return out;
+    }
+    return out;
+}
+
+void InstanceView::updateReorderIndicator(QDropEvent* event)
+{
+    QRect newRect;
+    if (event->source() == this && event->mimeData() && event->mimeData()->hasFormat("application/x-instanceid")) {
+        auto drop = reorderDropPos(event->position().toPoint() + offset());
+        if (drop.group)
+            newRect = drop.indicator;
+    }
+    if (newRect == m_dropIndicatorRect)
+        return;
+    // repaint just the old and new indicator spots, not the whole viewport
+    QRegion dirty;
+    if (!m_dropIndicatorRect.isNull())
+        dirty += m_dropIndicatorRect.translated(-offset()).adjusted(-3, -3, 3, 3);
+    if (!newRect.isNull())
+        dirty += newRect.translated(-offset()).adjusted(-3, -3, 3, 3);
+    m_dropIndicatorRect = newRect;
+    viewport()->update(dirty);
+}
+
+void InstanceView::clearReorderIndicator()
+{
+    if (m_dropIndicatorRect.isNull())
+        return;
+    const QRect old = m_dropIndicatorRect;
+    m_dropIndicatorRect = QRect();
+    viewport()->update(old.translated(-offset()).adjusted(-3, -3, 3, 3));
 }
 
 QPoint InstanceView::offset() const

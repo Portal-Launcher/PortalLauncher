@@ -16,6 +16,7 @@
 #include "InstanceProxyModel.h"
 
 #include <BaseInstance.h>
+#include <InstanceList.h>
 #include <icons/IconList.h>
 #include "Application.h"
 #include "InstanceView.h"
@@ -62,6 +63,14 @@ bool InstanceProxyModel::subSortLessThan(const QModelIndex& left, const QModelIn
     QString sortMode = APPLICATION->settings()->get("InstSortMode").toString();
     if (sortMode == "LastLaunch") {
         return pdataLeft->lastLaunch() > pdataRight->lastLaunch();
+    } else if (sortMode == "Custom") {
+        // drag-to-arrange order; instances that were never placed sort last, by name
+        auto instances = APPLICATION->instances();
+        const int leftRank = instances->customOrderRank(pdataLeft->id());
+        const int rightRank = instances->customOrderRank(pdataRight->id());
+        if (leftRank != rightRank)
+            return leftRank < rightRank;
+        return m_naturalSort.compare(pdataLeft->name(), pdataRight->name()) < 0;
     } else {
         return m_naturalSort.compare(pdataLeft->name(), pdataRight->name()) < 0;
     }
