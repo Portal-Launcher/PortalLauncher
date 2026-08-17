@@ -100,7 +100,6 @@ class ImageViewerDialog final : public QDialog {
     ImageViewport* m_viewport;
     QToolButton* m_prevButton;
     QToolButton* m_nextButton;
-    QToolButton* m_closeButton;
     QLabel* m_counterLabel;
     QLabel* m_zoomLabel;
     QWidget* m_captionBox;

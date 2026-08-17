@@ -27,6 +27,7 @@
 #include <QToolButton>
 #include <QWheelEvent>
 #include <QtMath>
+#include <utility>
 
 #include "Application.h"
 #include "net/ApiDownload.h"
@@ -227,12 +228,37 @@ void ImageViewport::resizeEvent(QResizeEvent* event)
 
 namespace {
 const char* OVERLAY_BUTTON_QSS =
-    "QToolButton { background-color: rgba(12, 13, 16, 150); color: #e8eaee; border: none; border-radius: 20px;"
-    "              min-width: 40px; min-height: 40px; max-width: 40px; max-height: 40px; font-size: 20px; }"
+    "QToolButton { background-color: rgba(12, 13, 16, 150); border: none; border-radius: 20px;"
+    "              min-width: 40px; min-height: 40px; max-width: 40px; max-height: 40px; }"
     "QToolButton:hover { background-color: rgba(12, 13, 16, 220); }"
-    "QToolButton:disabled { color: rgba(232, 234, 238, 60); background-color: rgba(12, 13, 16, 80); }";
+    "QToolButton:disabled { background-color: rgba(12, 13, 16, 80); }";
 
 const char* OVERLAY_CHIP_QSS = "QLabel { background-color: rgba(12, 13, 16, 150); color: #c9ced6; border-radius: 10px; padding: 3px 10px; }";
+
+/** A chevron drawn by hand so it is perfectly centered in the button,
+ *  independent of any font's glyph metrics. */
+QIcon makeChevronIcon(bool pointsRight)
+{
+    QIcon icon;
+    for (const auto& [mode, color] : { std::pair{ QIcon::Normal, QColor(0xe8, 0xea, 0xee) },
+                                       std::pair{ QIcon::Disabled, QColor(232, 234, 238, 60) } }) {
+        QPixmap pixmap(36, 36);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(color, 3.0);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        painter.setPen(pen);
+        // apex at the horizontal center, arms spanning 7px each way
+        const qreal cx = 18.0 + (pointsRight ? 3.5 : -3.5);
+        const qreal dir = pointsRight ? -7.0 : 7.0;
+        painter.drawPolyline(QPolygonF{ QPointF(cx + dir, 11.0), QPointF(cx, 18.0), QPointF(cx + dir, 25.0) });
+        painter.end();
+        icon.addPixmap(pixmap, mode);
+    }
+    return icon;
+}
 }  // namespace
 
 ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::GalleryImage> images, int startIndex, QString metaEntry)
@@ -246,7 +272,8 @@ ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::Gallery
     m_viewport->lower();
 
     m_prevButton = new QToolButton(this);
-    m_prevButton->setText(QStringLiteral("‹"));
+    m_prevButton->setIcon(makeChevronIcon(false));
+    m_prevButton->setIconSize(QSize(36, 36));
     m_prevButton->setToolTip(tr("Previous (Left arrow)"));
     m_prevButton->setCursor(Qt::PointingHandCursor);
     m_prevButton->setStyleSheet(OVERLAY_BUTTON_QSS);
@@ -254,20 +281,13 @@ ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::Gallery
     connect(m_prevButton, &QToolButton::clicked, this, [this] { showImage(m_index - 1); });
 
     m_nextButton = new QToolButton(this);
-    m_nextButton->setText(QStringLiteral("›"));
+    m_nextButton->setIcon(makeChevronIcon(true));
+    m_nextButton->setIconSize(QSize(36, 36));
     m_nextButton->setToolTip(tr("Next (Right arrow)"));
     m_nextButton->setCursor(Qt::PointingHandCursor);
     m_nextButton->setStyleSheet(OVERLAY_BUTTON_QSS);
     m_nextButton->setFocusPolicy(Qt::NoFocus);
     connect(m_nextButton, &QToolButton::clicked, this, [this] { showImage(m_index + 1); });
-
-    m_closeButton = new QToolButton(this);
-    m_closeButton->setText(QStringLiteral("✕"));
-    m_closeButton->setToolTip(tr("Close (Esc)"));
-    m_closeButton->setCursor(Qt::PointingHandCursor);
-    m_closeButton->setStyleSheet(OVERLAY_BUTTON_QSS);
-    m_closeButton->setFocusPolicy(Qt::NoFocus);
-    connect(m_closeButton, &QToolButton::clicked, this, &QDialog::reject);
 
     m_counterLabel = new QLabel(this);
     m_counterLabel->setStyleSheet(OVERLAY_CHIP_QSS);
@@ -400,9 +420,8 @@ void ImageViewerDialog::layoutOverlays()
     const int margin = 14;
     m_prevButton->move(area.left() + margin, area.center().y() - m_prevButton->height() / 2);
     m_nextButton->move(area.right() - margin - m_nextButton->width(), area.center().y() - m_nextButton->height() / 2);
-    m_closeButton->move(area.right() - margin - m_closeButton->width(), area.top() + margin);
-    m_counterLabel->move(area.left() + margin, area.top() + margin + 8);
-    m_zoomLabel->move(m_counterLabel->geometry().right() + 8, area.top() + margin + 8);
+    m_counterLabel->move(area.left() + margin, area.top() + margin);
+    m_zoomLabel->move(m_counterLabel->geometry().right() + 8, area.top() + margin);
 
     if (m_captionBox->isVisible()) {
         const int captionWidth = qMin(int(area.width() * 0.7), 720);
@@ -410,7 +429,7 @@ void ImageViewerDialog::layoutOverlays()
         m_captionBox->setGeometry((area.width() - captionWidth) / 2, area.bottom() - margin - captionHeight, captionWidth, captionHeight);
     }
 
-    for (QWidget* overlay : { static_cast<QWidget*>(m_prevButton), static_cast<QWidget*>(m_nextButton), static_cast<QWidget*>(m_closeButton),
+    for (QWidget* overlay : { static_cast<QWidget*>(m_prevButton), static_cast<QWidget*>(m_nextButton),
                               static_cast<QWidget*>(m_counterLabel), static_cast<QWidget*>(m_zoomLabel), m_captionBox }) {
         overlay->raise();
     }
