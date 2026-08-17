@@ -925,6 +925,10 @@ SET(LAUNCHER_SOURCES
     JavaCommon.h
     JavaCommon.cpp
 
+    # Discord Rich Presence over the local IPC pipe
+    DiscordPresence.h
+    DiscordPresence.cpp
+
     # GUI - paged dialog base
     ui/pages/BasePage.h
     ui/pages/BasePageContainer.h

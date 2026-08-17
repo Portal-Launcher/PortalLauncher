@@ -172,6 +172,16 @@
       </layout>
      </item>
      <item>
+      <widget class="QCheckBox" name="updateOnLaunchCheckBox">
+       <property name="toolTip">
+        <string>When a newer pack version is known at launch, ask to update before the game starts.</string>
+       </property>
+       <property name="text">
+        <string>Offer pack updates when launching this instance</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QGroupBox" name="changelogBox">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">

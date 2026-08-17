@@ -141,6 +141,10 @@ ManagedPackPage::ManagedPackPage(BaseInstance* inst, InstanceWindow* instance_wi
     });
 
     connect(ui->urlLine, &QLineEdit::textChanged, this, [this](QString text) { m_inst->settings()->set("ManagedPackURL", text.trimmed()); });
+
+    ui->updateOnLaunchCheckBox->setChecked(m_inst->settings()->get("ManagedPackUpdateOnLaunch").toBool());
+    connect(ui->updateOnLaunchCheckBox, &QCheckBox::toggled, this,
+            [this](bool checked) { m_inst->settings()->set("ManagedPackUpdateOnLaunch", checked); });
 }
 
 ManagedPackPage::~ManagedPackPage()

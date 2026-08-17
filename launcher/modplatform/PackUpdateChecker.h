@@ -19,11 +19,14 @@
 
 #include <QObject>
 #include <QQueue>
+#include <optional>
 
 #include "modplatform/ModIndex.h"
 #include "modplatform/flame/FlameAPI.h"
 #include "modplatform/modrinth/ModrinthAPI.h"
 #include "tasks/Task.h"
+
+class BaseInstance;
 
 /** Checks managed modpack instances (Modrinth / CurseForge) for newer pack
  *  versions and marks the ones that can update, so the instance grid can show
@@ -36,6 +39,14 @@ class PackUpdateChecker : public QObject {
     /// Queue a check of every managed instance. Respects the CheckPackUpdates
     /// setting and is safe to call repeatedly; a few checks run in parallel.
     static void checkAll();
+
+    /// Picks the newest listed version if it is newer than the one installed.
+    /// Returns nothing when the installed version is unlisted (custom builds)
+    /// or already newest. Shared by the background checker and the pre-launch
+    /// update prompt.
+    static std::optional<ModPlatform::IndexedVersion> findNewerVersion(BaseInstance* inst,
+                                                                       const QString& type,
+                                                                       const QVector<ModPlatform::IndexedVersion>& versions);
 
    private:
     explicit PackUpdateChecker(QObject* parent = nullptr);

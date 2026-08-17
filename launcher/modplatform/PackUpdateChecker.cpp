@@ -114,11 +114,12 @@ void PackUpdateChecker::startOne(const QString& instanceId)
     job->start();
 }
 
-void PackUpdateChecker::evaluate(const QString& instanceId, const QString& type, const QVector<ModPlatform::IndexedVersion>& versions)
+std::optional<ModPlatform::IndexedVersion> PackUpdateChecker::findNewerVersion(BaseInstance* inst,
+                                                                              const QString& type,
+                                                                              const QVector<ModPlatform::IndexedVersion>& versions)
 {
-    auto inst = APPLICATION->instances()->getInstanceById(instanceId);
     if (!inst || versions.isEmpty())
-        return;
+        return std::nullopt;
 
     int currentIndex = -1;
     for (int i = 0; i < versions.size(); i++) {
@@ -133,9 +134,7 @@ void PackUpdateChecker::evaluate(const QString& instanceId, const QString& type,
     }
     if (currentIndex < 0) {
         // Custom or unlisted version, don't guess.
-        inst->setUpdateAvailableVersion(QString());
-        inst->setUpdateAvailable(false);
-        return;
+        return std::nullopt;
     }
 
     auto parseDate = [](const ModPlatform::IndexedVersion& v) {
@@ -153,9 +152,21 @@ void PackUpdateChecker::evaluate(const QString& instanceId, const QString& type,
             newestIndex = i;
     }
 
-    if (newestIndex != currentIndex) {
-        qDebug() << "Pack update available for" << inst->name() << "-" << versions[newestIndex].version;
-        inst->setUpdateAvailableVersion(versions[newestIndex].version);
+    if (newestIndex == currentIndex)
+        return std::nullopt;
+    return versions[newestIndex];
+}
+
+void PackUpdateChecker::evaluate(const QString& instanceId, const QString& type, const QVector<ModPlatform::IndexedVersion>& versions)
+{
+    auto inst = APPLICATION->instances()->getInstanceById(instanceId);
+    if (!inst)
+        return;
+
+    auto newer = findNewerVersion(inst, type, versions);
+    if (newer) {
+        qDebug() << "Pack update available for" << inst->name() << "-" << newer->version;
+        inst->setUpdateAvailableVersion(newer->version);
         inst->setUpdateAvailable(true);
     } else {
         inst->setUpdateAvailableVersion(QString());
