@@ -18,8 +18,11 @@
 
 #include "VariableSizedImageObject.h"
 
+#include <QAbstractScrollArea>
 #include <QAbstractTextDocumentLayout>
 #include <QDebug>
+#include <QImageReader>
+#include <QMovie>
 #include <QPainter>
 #include <QTextObject>
 #include <memory>
@@ -66,7 +69,18 @@ QSizeF VariableSizedImageObject::intrinsicSize(QTextDocument* doc, int posInDocu
     // doc->textWidth() includes the margin, so we need to remove it.
     auto doc_width = doc->textWidth() - 2 * doc->documentMargin();
 
-    if (size.width() > doc_width)
+    // Percentage widths (width="100%") land in ImageMaxWidth, not ImageWidth.
+    auto maxWidthVar = format.property(QTextFormat::ImageMaxWidth);
+    if (doc_width > 0 && maxWidthVar.canConvert<QTextLength>()) {
+        auto maxWidth = qvariant_cast<QTextLength>(maxWidthVar);
+        if (maxWidth.type() == QTextLength::PercentageLength && size.width() > 0) {
+            size *= (doc_width * maxWidth.rawValue() / 100.0) / size.width();
+        } else if (maxWidth.type() == QTextLength::FixedLength && maxWidth.rawValue() > 0 && size.width() > maxWidth.rawValue()) {
+            size *= maxWidth.rawValue() / size.width();
+        }
+    }
+
+    if (doc_width > 0 && size.width() > doc_width)
         size *= doc_width / (double)size.width();
 
     return { size };
@@ -95,12 +109,20 @@ void VariableSizedImageObject::drawObject(QPainter* painter,
         if (heigthVar.isValid()) {
             meta->height = heigthVar.toInt();
         }
+        meta->maxWidth = format.property(QTextFormat::ImageMaxWidth);
 
         loadImage(doc, meta);
         return;
     }
 
     auto image = qvariant_cast<QImage>(format.property(ImageData));
+
+    // Animated images (GIFs) draw their current movie frame instead of the static image.
+    if (auto it = m_movies.constFind(qvariant_cast<QString>(format.property(QTextFormat::ImageName))); it != m_movies.constEnd()) {
+        const QImage frame = it.value()->currentImage();
+        if (!frame.isNull())
+            image = frame;
+    }
 
     painter->setRenderHint(QPainter::RenderHint::SmoothPixmapTransform);
     painter->drawImage(rect, image);
@@ -109,6 +131,36 @@ void VariableSizedImageObject::drawObject(QPainter* painter,
 void VariableSizedImageObject::flush()
 {
     m_fetching_images.clear();
+    for (auto* movie : m_movies) {
+        movie->stop();
+        movie->deleteLater();
+    }
+    m_movies.clear();
+}
+
+void VariableSizedImageObject::setupAnimation(const QUrl& url, const QString& path)
+{
+    const QString key = url.toDisplayString();
+    if (m_movies.contains(key))
+        return;
+
+    QImageReader reader(path);
+    if (!reader.supportsAnimation() || reader.imageCount() <= 1)
+        return;
+
+    auto* movie = new QMovie(path, QByteArray(), this);
+    if (!movie->isValid()) {
+        delete movie;
+        return;
+    }
+
+    movie->setCacheMode(QMovie::CacheAll);
+    connect(movie, &QMovie::frameChanged, this, [this] {
+        if (auto* area = qobject_cast<QAbstractScrollArea*>(parent()))
+            area->viewport()->update();
+    });
+    m_movies.insert(key, movie);
+    movie->start();
 }
 
 void VariableSizedImageObject::parseImage(QTextDocument* doc, std::shared_ptr<ImageMetadata> meta)
@@ -124,6 +176,9 @@ void VariableSizedImageObject::parseImage(QTextDocument* doc, std::shared_ptr<Im
     image_char_format.setProperty(QTextFormat::ImageName, meta->url.toDisplayString());
     image_char_format.setProperty(QTextFormat::ImageWidth, meta->width);
     image_char_format.setProperty(QTextFormat::ImageHeight, meta->height);
+    if (meta->maxWidth.isValid()) {
+        image_char_format.setProperty(QTextFormat::ImageMaxWidth, meta->maxWidth);
+    }
 
     // Qt doesn't allow us to modify the properties of an existing object in the document.
     // So we remove the old one and add the new one with the ImageData property set.
@@ -150,12 +205,18 @@ void VariableSizedImageObject::loadImage(QTextDocument* doc, std::shared_ptr<Ima
 
         meta->image = image;
         parseImage(doc, meta);
+        setupAnimation(source_url, full_entry_path);
 
         // This size hack is needed to prevent the content from being laid out in an area smaller
         // than the total width available (weird).
         auto size = doc->pageSize();
         doc->adjustSize();
         doc->setPageSize(size);
+
+        // A single-character replacement only dirties the image's own block; the
+        // blocks after it can keep stale positions and end up painted under the
+        // now full-sized image. Relayout everything.
+        doc->markContentsDirty(0, doc->characterCount());
 
         m_fetching_images.remove(source_url);
     };

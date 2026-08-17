@@ -18,11 +18,15 @@
 
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QTextObjectInterface>
 #include <QUrl>
+#include <QVariant>
 #include <memory>
+
+class QMovie;
 
 /** Custom image text object to be used instead of the normal one in ProjectDescriptionPage.
  *
@@ -39,6 +43,7 @@ class VariableSizedImageObject final : public QObject, public QTextObjectInterfa
         QImage image;
         int width;
         int height;
+        QVariant maxWidth;
     };
 
    public:
@@ -66,8 +71,12 @@ class VariableSizedImageObject final : public QObject, public QTextObjectInterfa
      */
     void loadImage(QTextDocument* doc, std::shared_ptr<ImageMetadata> meta);
 
+    /** Starts playing the image as an animation if it has more than one frame. */
+    void setupAnimation(const QUrl& url, const QString& path);
+
    private:
     QString m_meta_entry;
 
     QSet<QUrl> m_fetching_images;
+    QHash<QString, QMovie*> m_movies;
 };
