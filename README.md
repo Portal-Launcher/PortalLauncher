@@ -31,8 +31,9 @@ Everything else works exactly like Prism Launcher, and it reads the same data fo
 
 ## Installation
 
-- Grab the Windows build from the [latest release](https://github.com/TinsleyDevers/PortalLauncher/releases/latest), unzip it anywhere, and run `prismlauncher.exe`.
-- Windows SmartScreen may warn because the build is not signed: click "More info", then "Run anyway".
+- **Installer (recommended):** download `PortalLauncher-Setup-*.exe` from the [latest release](https://github.com/TinsleyDevers/PortalLauncher/releases/latest) and run it. It installs for the current user only (no admin prompt), adds Start Menu and desktop shortcuts, and can be removed from Add or Remove Programs.
+- **Portable zip:** download `PortalLauncher-Windows-MSVC-*.zip`, unzip it anywhere, and run `prismlauncher.exe`. This is also what the in-app updater installs.
+- Windows SmartScreen may warn because the build is not signed: click "More info", then "Run anyway". Every release ships a `.sha256` file next to each download if you want to verify it.
 - If you already use Prism Launcher, Portal picks up your existing instances and accounts automatically.
 - Sign in with your Modrinth account from the Sharing page of any instance to start sharing.
 

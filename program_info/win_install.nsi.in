@@ -380,6 +380,8 @@ Section "@Launcher_DisplayName@"
   File "qt.conf"
   File "qtlogging.ini"
   File *.dll
+  ; resource pack optimizer, only present when it was fetched before packaging
+  File /nonfatal "packsquash.exe"
   File /r "iconengines"
   File /r "imageformats"
   File /r "jars"
@@ -475,6 +477,8 @@ Section "Uninstall"
   Delete $INSTDIR\@Launcher_APP_BINARY_NAME@_filelink.exe
   Delete $INSTDIR\@Launcher_APP_BINARY_NAME@_updater.exe
   Delete $INSTDIR\qt.conf
+  Delete $INSTDIR\qtlogging.ini
+  Delete $INSTDIR\packsquash.exe
   Delete $INSTDIR\*.dll
 
   Delete $INSTDIR\uninstall.exe

@@ -703,9 +703,11 @@ QList<GitHubReleaseAsset> PrismUpdaterApp::validReleaseArtifacts(const GitHubRel
             qDebug() << "Rejecting" << asset.name << "because architecture does not match";
             for_platform = false;
         }
-        // Portal ships zip archives only (no installer), so archives are valid
-        // for non-portable Windows installs too; the generic archive install
-        // path handles them the same way it does on other platforms.
+        // Portal updates from the zip archive even on non-portable installs;
+        // the generic archive install path handles it the same way it does on
+        // other platforms. The Setup.exe published alongside is for first-time
+        // installs only, and is skipped here because its name deliberately
+        // leaves out the build artifact.
 
         static const QRegularExpression s_qtPattern("-qt(\\d+)");
         auto qt_match = s_qtPattern.match(asset_name);
