@@ -39,6 +39,38 @@
 
 #include <QRegularExpression>
 
+QStringList JavaCommon::optimizedGcArgs(const QString& preset)
+{
+    if (preset == "shenandoah") {
+        return { "-XX:+UnlockExperimentalVMOptions", "-XX:+UseShenandoahGC", "-XX:+ParallelRefProcEnabled", "-XX:+DisableExplicitGC",
+                 "-XX:+PerfDisableSharedMem" };
+    }
+    // G1 preset, derived from Aikar's flags
+    return { "-XX:+UseG1GC",
+             "-XX:+UnlockExperimentalVMOptions",
+             "-XX:+ParallelRefProcEnabled",
+             "-XX:MaxGCPauseMillis=200",
+             "-XX:+DisableExplicitGC",
+             "-XX:G1NewSizePercent=30",
+             "-XX:G1MaxNewSizePercent=40",
+             "-XX:G1HeapRegionSize=8M",
+             "-XX:G1ReservePercent=20",
+             "-XX:G1HeapWastePercent=5",
+             "-XX:G1MixedGCCountTarget=4",
+             "-XX:InitiatingHeapOccupancyPercent=15",
+             "-XX:G1MixedGCLiveThresholdPercent=90",
+             "-XX:G1RSetUpdatingPauseTimePercent=5",
+             "-XX:SurvivorRatio=32",
+             "-XX:MaxTenuringThreshold=1",
+             "-XX:+PerfDisableSharedMem" };
+}
+
+bool JavaCommon::argsSelectGarbageCollector(const QString& args)
+{
+    static const QRegularExpression s_gcRegex("-XX:\\+Use\\w*GC");
+    return args.contains(s_gcRegex);
+}
+
 bool JavaCommon::checkJVMArgs(QString jvmargs, QWidget* parent)
 {
     static const QRegularExpression s_memRegex("-Xm[sx]");

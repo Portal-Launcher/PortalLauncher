@@ -44,6 +44,7 @@
 #include "settings/SettingsObject.h"
 
 #include "FileSystem.h"
+#include "JavaCommon.h"
 #include "MMCTime.h"
 #include "java/JavaVersion.h"
 
@@ -190,6 +191,8 @@ void MinecraftInstance::loadSpecificSettings()
     if (auto global_settings = globalSettings()) {
         m_settings->registerOverride(global_settings->getSetting("JavaPath"), locationOverride);
         m_settings->registerOverride(global_settings->getSetting("JvmArgs"), argsOverride);
+        m_settings->registerOverride(global_settings->getSetting("OptimizedGcArgs"), argsOverride);
+        m_settings->registerOverride(global_settings->getSetting("OptimizedGcPreset"), argsOverride);
         m_settings->registerOverride(global_settings->getSetting("IgnoreJavaCompatibility"), locationOverride);
 
         // special!
@@ -572,6 +575,13 @@ QStringList MinecraftInstance::javaArguments()
     QStringList args;
 
     args << "-Duser.language=en";
+
+    // tuned GC preset goes before custom args so the user's own flags win; skipped
+    // outright if the custom args pick a collector (conflicting collectors are fatal)
+    if (settings()->get("OptimizedGcArgs").toBool() && getJavaVersion().major() >= 8 &&
+        !JavaCommon::argsSelectGarbageCollector(settings()->get("JvmArgs").toString())) {
+        args.append(JavaCommon::optimizedGcArgs(settings()->get("OptimizedGcPreset").toString()));
+    }
 
     // custom args go first. we want to override them if we have our own here.
     args.append(extraArguments());

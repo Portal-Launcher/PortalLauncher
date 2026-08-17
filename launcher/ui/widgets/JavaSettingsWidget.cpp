@@ -98,6 +98,19 @@ JavaSettingsWidget::JavaSettingsWidget(BaseInstance* instance, QWidget* parent)
         });
     }
 
+    m_ui->gcPresetComboBox->addItem(tr("G1 (recommended)"), "g1");
+    m_ui->gcPresetComboBox->addItem(tr("Shenandoah (Java 11+)"), "shenandoah");
+    for (int i = 0; i < m_ui->gcPresetComboBox->count(); i++) {
+        auto preset = m_ui->gcPresetComboBox->itemData(i).toString();
+        m_ui->gcPresetComboBox->setItemData(i, JavaCommon::optimizedGcArgs(preset).join('\n'), Qt::ToolTipRole);
+    }
+    m_ui->optimizedGcCheckBox->setToolTip(
+        tr("Starts the game with garbage collection flags tuned for smoother play.\n"
+           "Skipped automatically if your own arguments below already pick a collector.\n"
+           "Hover a preset to see the exact flags."));
+    m_ui->gcPresetComboBox->setEnabled(m_ui->optimizedGcCheckBox->isChecked());
+    connect(m_ui->optimizedGcCheckBox, &QCheckBox::toggled, m_ui->gcPresetComboBox, &QComboBox::setEnabled);
+
     connect(m_ui->javaTestBtn, &QPushButton::clicked, this, &JavaSettingsWidget::onJavaTest);
     connect(m_ui->javaDetectBtn, &QPushButton::clicked, this, &JavaSettingsWidget::onJavaAutodetect);
     connect(m_ui->javaBrowseBtn, &QPushButton::clicked, this, &JavaSettingsWidget::onJavaBrowse);
@@ -156,6 +169,9 @@ void JavaSettingsWidget::loadSettings()
     // Java arguments
     m_ui->javaArgumentsGroupBox->setChecked(m_instance == nullptr || settings->get("OverrideJavaArgs").toBool());
     m_ui->jvmArgsTextBox->setPlainText(settings->get("JvmArgs").toString());
+    m_ui->optimizedGcCheckBox->setChecked(settings->get("OptimizedGcArgs").toBool());
+    auto presetIndex = m_ui->gcPresetComboBox->findData(settings->get("OptimizedGcPreset").toString());
+    m_ui->gcPresetComboBox->setCurrentIndex(qMax(0, presetIndex));
 }
 
 void JavaSettingsWidget::saveSettings()
@@ -222,8 +238,12 @@ void JavaSettingsWidget::saveSettings()
 
     if (javaArgs) {
         settings->set("JvmArgs", m_ui->jvmArgsTextBox->toPlainText().replace("\n", " "));
+        settings->set("OptimizedGcArgs", m_ui->optimizedGcCheckBox->isChecked());
+        settings->set("OptimizedGcPreset", m_ui->gcPresetComboBox->currentData().toString());
     } else {
         settings->reset("JvmArgs");
+        settings->reset("OptimizedGcArgs");
+        settings->reset("OptimizedGcPreset");
     }
 }
 
@@ -251,10 +271,13 @@ void JavaSettingsWidget::onJavaTest()
 
     QString jvmArgs;
 
-    if (m_instance == nullptr || m_ui->javaArgumentsGroupBox->isChecked())
+    if (m_instance == nullptr || m_ui->javaArgumentsGroupBox->isChecked()) {
         jvmArgs = m_ui->jvmArgsTextBox->toPlainText().replace("\n", " ");
-    else
+        if (m_ui->optimizedGcCheckBox->isChecked() && !JavaCommon::argsSelectGarbageCollector(jvmArgs))
+            jvmArgs = JavaCommon::optimizedGcArgs(m_ui->gcPresetComboBox->currentData().toString()).join(' ') + " " + jvmArgs;
+    } else {
         jvmArgs = APPLICATION->settings()->get("JvmArgs").toString();
+    }
 
     m_checker.reset(new JavaCommon::TestCheck(this, m_ui->javaPathTextBox->text(), jvmArgs, m_ui->minMemSpinBox->value(),
                                               m_ui->maxMemSpinBox->value(), m_ui->permGenSpinBox->value()));

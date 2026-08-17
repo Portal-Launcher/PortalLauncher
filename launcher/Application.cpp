@@ -765,6 +765,8 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("JavaVendor", "");
         m_settings->registerSetting("LastHostname", "");
         m_settings->registerSetting("JvmArgs", "");
+        m_settings->registerSetting("OptimizedGcArgs", false);
+        m_settings->registerSetting("OptimizedGcPreset", "g1");
         m_settings->registerSetting("IgnoreJavaCompatibility", false);
         m_settings->registerSetting("IgnoreJavaWizard", false);
         auto defaultEnableAutoJava = m_settings->get("JavaPath").toString().isEmpty();

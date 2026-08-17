@@ -374,6 +374,33 @@
       <bool>false</bool>
      </property>
      <layout class="QGridLayout" name="gridLayout_6">
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_7">
+        <item>
+         <widget class="QCheckBox" name="optimizedGcCheckBox">
+          <property name="text">
+           <string>Optimized garbage collection</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="gcPresetComboBox"/>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_8">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
       <item row="1" column="1">
        <widget class="QPlainTextEdit" name="jvmArgsTextBox"/>
       </item>
@@ -396,6 +423,8 @@
   <tabstop>maxMemSpinBox</tabstop>
   <tabstop>permGenSpinBox</tabstop>
   <tabstop>lowMemWarningCheckBox</tabstop>
+  <tabstop>optimizedGcCheckBox</tabstop>
+  <tabstop>gcPresetComboBox</tabstop>
   <tabstop>jvmArgsTextBox</tabstop>
  </tabstops>
  <resources/>

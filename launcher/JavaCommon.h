@@ -9,6 +9,13 @@ class QWidget;
 namespace JavaCommon {
 bool checkJVMArgs(QString args, QWidget* parent);
 
+// Tuned garbage collection flags for the "Optimized garbage collection" setting.
+// Preset ids: "g1" (default), "shenandoah".
+QStringList optimizedGcArgs(const QString& preset);
+// True if the given custom JVM args already select a garbage collector; the
+// preset must not be applied on top (the JVM refuses conflicting collectors).
+bool argsSelectGarbageCollector(const QString& args);
+
 // Show a dialog saying that the Java binary was usable
 void javaWasOk(QWidget* parent, const JavaChecker::Result& result);
 // Show a dialog saying that the Java binary was not usable because of bad options
