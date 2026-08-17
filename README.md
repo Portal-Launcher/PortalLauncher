@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo-darkmode.svg">
   <source media="(prefers-color-scheme: light)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo.svg">
@@ -29,14 +29,14 @@ Everything else works exactly like Prism Launcher, and it reads the same data fo
 
 ## Installation
 
-- Grab the Windows build from the [latest release](https://github.com/TinsleyDevers/PrismLauncher/releases/latest), unzip it anywhere, and run `prismlauncher.exe`.
+- Grab the Windows build from the [latest release](https://github.com/TinsleyDevers/PortalLauncher/releases/latest), unzip it anywhere, and run `prismlauncher.exe`.
 - Windows SmartScreen may warn because the build is not signed: click "More info", then "Run anyway".
 - If you already use Prism Launcher, Portal picks up your existing instances and accounts automatically.
 - Sign in with your Modrinth account from the Sharing page of any instance to start sharing.
 
 ## Community & Support
 
-Found a bug or have a suggestion? Open a [GitHub issue](https://github.com/TinsleyDevers/PrismLauncher/issues). Please do not ask the upstream Prism Launcher community for help with Portal: if something here is broken, it is this fork's fault, not theirs.
+Found a bug or have a suggestion? Open a [GitHub issue](https://github.com/TinsleyDevers/PortalLauncher/issues). Please do not ask the upstream Prism Launcher community for help with Portal: if something here is broken, it is this fork's fault, not theirs.
 
 ## Building
 

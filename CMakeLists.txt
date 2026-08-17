@@ -195,7 +195,7 @@ set(Launcher_BUILD_PLATFORM "unknown" CACHE STRING "A short string identifying t
 
 # Github repo URL with releases for updater. FORCE so existing build caches
 # pick up Portal's update channel instead of upstream's.
-set(Launcher_UPDATER_GITHUB_REPO "https://github.com/TinsleyDevers/PrismLauncher" CACHE STRING "Base github URL for the updater." FORCE)
+set(Launcher_UPDATER_GITHUB_REPO "https://github.com/TinsleyDevers/PortalLauncher" CACHE STRING "Base github URL for the updater." FORCE)
 
 # Name to help updater identify valid artifacts. Release assets must contain
 # this string (e.g. PortalLauncher-Windows-MSVC-1.0.0.zip).
@@ -208,7 +208,7 @@ set(Launcher_META_URL "https://meta.prismlauncher.org/v1/" CACHE STRING "URL to 
 set(Launcher_IMGUR_CLIENT_ID "5b97b0713fba4a3" CACHE STRING "Client ID you can get from Imgur when you register an application")
 
 # Bug tracker URL: Portal issues go to the fork, not upstream
-set(Launcher_BUG_TRACKER_URL "https://github.com/TinsleyDevers/PrismLauncher/issues" CACHE STRING "URL for the bug tracker." FORCE)
+set(Launcher_BUG_TRACKER_URL "https://github.com/TinsleyDevers/PortalLauncher/issues" CACHE STRING "URL for the bug tracker." FORCE)
 
 # Translations Platform URL
 set(Launcher_TRANSLATIONS_URL "https://hosted.weblate.org/projects/prismlauncher/launcher/" CACHE STRING "URL for the translations platform.")
