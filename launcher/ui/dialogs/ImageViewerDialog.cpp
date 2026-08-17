@@ -24,6 +24,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScreen>
+#include <QTimer>
 #include <QToolButton>
 #include <QWheelEvent>
 #include <QtMath>
@@ -321,6 +322,12 @@ ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::Gallery
         resize(1100, 750);
     }
 
+    if (m_images.isEmpty()) {
+        // Nothing to show; close as soon as the event loop runs (qBound with
+        // an inverted range would assert in debug builds).
+        QTimer::singleShot(0, this, &QDialog::reject);
+        return;
+    }
     m_index = qBound(0, startIndex, int(m_images.size()) - 1);
     preloadAll();
     showImage(m_index);
@@ -381,7 +388,7 @@ void ImageViewerDialog::showImage(int index)
     } else if (m_failed.value(m_index, false)) {
         m_viewport->setPlaceholderText(tr("Could not load the image."));
     } else {
-        m_viewport->setPlaceholderText(QStringLiteral("…"));
+        m_viewport->setPlaceholderText(tr("Loading image %1 of %2…").arg(m_index + 1).arg(m_images.size()));
     }
 
     const auto& image = m_images[m_index];

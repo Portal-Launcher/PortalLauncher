@@ -286,7 +286,9 @@ void ResourceUpdateDialog::checkCandidates()
         } else {
             warningLabel->setText(tr("Warning: The following required dependencies are missing:\n%1").arg(missingDeps.join('\n')));
         }
-        ui->gridLayout->addWidget(warningLabel, 3, 0);
+        // Always take a fresh row: a QGridLayout silently stacks widgets that
+        // share a cell, and row 3 is not guaranteed to be free.
+        ui->gridLayout->addWidget(warningLabel, ui->gridLayout->rowCount(), 0, 1, -1);
     }
 
     // If there's no resource to be updated

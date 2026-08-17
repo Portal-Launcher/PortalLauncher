@@ -68,6 +68,9 @@ class ProjectDetailPanel final : public QWidget {
     /** The user picked a version row; the index points into the pack's version list. */
     void versionPicked(int versionIndex);
 
+   protected:
+    bool event(QEvent* event) override;
+
    private:
     void rebuildHeader();
     void rebuildDescription();
@@ -91,12 +94,12 @@ class ProjectDetailPanel final : public QWidget {
     bool m_syncingSelection = false;
     bool m_galleryPrefetched = false;
 
-    QWidget* m_header;
-    QLabel* m_iconLabel;
-    QLabel* m_titleLabel;
-    QLabel* m_statsLabel;
-    QLabel* m_tagsLabel;
-    QLabel* m_linksLabel;
+    QWidget* m_header = nullptr;
+    QLabel* m_iconLabel = nullptr;
+    QLabel* m_titleLabel = nullptr;
+    QLabel* m_statsLabel = nullptr;
+    QLabel* m_tagsLabel = nullptr;
+    QLabel* m_linksLabel = nullptr;
 
     QTabWidget* m_tabs;
     ProjectDescriptionPage* m_description;

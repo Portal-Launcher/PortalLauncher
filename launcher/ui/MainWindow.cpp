@@ -103,10 +103,15 @@
 #include "ui/dialogs/ModrinthInviteFriendDialog.h"
 #include "ui/dialogs/ModrinthJoinDialog.h"
 #include <QClipboard>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QStatusBar>
 #include <QTimer>
 #include <QToolTip>
 #include "modplatform/PackUpdateChecker.h"
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
+#include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "ui/widgets/FriendsPanel.h"
@@ -265,6 +270,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     // OSX magic.
     setUnifiedTitleAndToolBarOnMac(true);
 
+    // Accept drops anywhere on the window (modpacks, zips, share links), not
+    // just over the instance grid.
+    setAcceptDrops(true);
+
     // Global shortcuts
     {
         // you can't set QKeySequence::StandardKey shortcuts in qt designer >:(
@@ -286,8 +295,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         connect(secretEventFilter, &KonamiCode::triggered, this, &MainWindow::konamiTriggered);
     }
 
-    // Add the news label to the news toolbar.
-    {
+    // Add the news label to the news toolbar. With no feed configured the
+    // whole toolbar is pointless; hide it instead of showing "No news".
+    if (BuildConfig.NEWS_RSS_URL.isEmpty()) {
+        ui->newsToolBar->hide();
+        ui->newsToolBar->toggleViewAction()->setVisible(false);
+    } else {
         m_newsChecker.reset(new NewsChecker(APPLICATION->network(), BuildConfig.NEWS_RSS_URL));
         newsLabel = new QToolButton();
         newsLabel->setIcon(QIcon::fromTheme("news"));
@@ -438,7 +451,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     // auto accounts = APPLICATION->accounts();
 
     // load the news
-    {
+    if (m_newsChecker) {
         m_newsChecker->reloadNews();
         updateNewsLabel();
     }
@@ -465,12 +478,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     QTimer::singleShot(10000, this, [] { PackUpdateChecker::checkAll(); });
 
     // Keep the resume button pointing at the most recently played instance.
+    // dataChanged fires for every status tick of a running instance, so
+    // coalesce the O(instances) rescan behind a zero timer.
     {
+        auto* resumeCoalesce = new QTimer(this);
+        resumeCoalesce->setSingleShot(true);
+        resumeCoalesce->setInterval(0);
+        connect(resumeCoalesce, &QTimer::timeout, this, [this] { updateResumeButton(); });
         auto instanceList = APPLICATION->instances();
-        connect(instanceList, &InstanceList::dataChanged, this, [this] { updateResumeButton(); });
-        connect(instanceList, &InstanceList::rowsInserted, this, [this] { updateResumeButton(); });
-        connect(instanceList, &InstanceList::rowsRemoved, this, [this] { updateResumeButton(); });
-        connect(instanceList, &InstanceList::modelReset, this, [this] { updateResumeButton(); });
+        connect(instanceList, &InstanceList::dataChanged, resumeCoalesce, qOverload<>(&QTimer::start));
+        connect(instanceList, &InstanceList::rowsInserted, resumeCoalesce, qOverload<>(&QTimer::start));
+        connect(instanceList, &InstanceList::rowsRemoved, resumeCoalesce, qOverload<>(&QTimer::start));
+        connect(instanceList, &InstanceList::modelReset, resumeCoalesce, qOverload<>(&QTimer::start));
     }
 
     // Refresh instance quick actions (share, pack update) when the File menu opens.
@@ -486,6 +505,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         friendsAction->setText(tr("Friends"));
         friendsAction->setToolTip(tr("Show your Modrinth friends, who is online, and what they are playing."));
         ui->mainToolBar->addAction(friendsAction);
+        // Keep the panel reachable when the main toolbar is hidden
+        // (menu-bar-instead-of-toolbar mode).
+        ui->viewMenu->addAction(friendsAction);
         if (ModrinthShared::isSignedIn()) {
             ModrinthFriends::get()->ensureConnected();
             ModrinthFriends::get()->refresh();
@@ -651,6 +673,30 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
         }
     }
     QMenu myMenu;
+    if (onInstance && m_selectedInstance) {
+        // Quick "move to group" submenu so regrouping does not need the modal
+        // group dialog every time.
+        auto* moveMenu = new QMenu(tr("Move to group"), &myMenu);
+        const QString instanceId = m_selectedInstance->id();
+        const QString currentGroup = APPLICATION->instances()->getInstanceGroup(instanceId);
+        auto addGroupAction = [this, moveMenu, instanceId, currentGroup](const QString& label, const QString& target) {
+            auto* act = moveMenu->addAction(label);
+            act->setCheckable(true);
+            act->setChecked(target == currentGroup);
+            connect(act, &QAction::triggered, this,
+                    [instanceId, target] { APPLICATION->instances()->setInstanceGroup(instanceId, target); });
+        };
+        addGroupAction(tr("(no group)"), QString());
+        auto groups = APPLICATION->instances()->getGroups();
+        groups.sort(Qt::CaseInsensitive);
+        for (const QString& group : groups) {
+            if (!group.isEmpty())
+                addGroupAction(group, group);
+        }
+        moveMenu->addSeparator();
+        moveMenu->addAction(tr("New group…"), this, &MainWindow::on_actionChangeInstGroup_triggered);
+        actions.insert(qMin(4, actions.size()), moveMenu->menuAction());
+    }
     myMenu.addActions(actions);
     /*
     if (onInstance)
@@ -871,6 +917,8 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* ev)
 
 void MainWindow::updateNewsLabel()
 {
+    if (!m_newsChecker || !newsLabel)
+        return;
     if (m_newsChecker->isLoadingNews()) {
         newsLabel->setText(tr("Loading news..."));
         newsLabel->setEnabled(false);
@@ -998,6 +1046,20 @@ void MainWindow::on_actionAddInstance_triggered()
     addInstance();
 }
 
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    if (!event->mimeData()->hasUrls())
+        return;
+    event->acceptProposedAction();
+    processURLs(event->mimeData()->urls());
+}
+
 void MainWindow::processURLs(QList<QUrl> urls)
 {
     // NOTE: This loop only processes one dropped file!
@@ -1010,6 +1072,18 @@ void MainWindow::processURLs(QList<QUrl> urls)
         // The isLocalFile() check below doesn't work as intended without an explicit scheme.
         if (url.scheme().isEmpty())
             url.setScheme("file");
+
+        // Shared-pack invite links go through the join flow, not a modpack
+        // download of the web page.
+        {
+            const QString host = url.host().toLower();
+            const bool isModrinthHost = host == QLatin1String("modrinth.com") || host.endsWith(QLatin1String(".modrinth.com"));
+            if (isModrinthHost && url.path().split('/', Qt::SkipEmptyParts).contains("share") &&
+                !ModrinthShared::parseInviteRef(url.toString()).isEmpty()) {
+                ModrinthShared::joinFromInviteRef(this, url.toString(), [](bool) {});
+                continue;
+            }
+        }
 
         ModPlatform::IndexedVersion version;
         QMap<QString, QString> extra_info;
@@ -1501,12 +1575,16 @@ void MainWindow::on_actionCopyShareLink_triggered()
         return;
     ModrinthShared::createInvite(this, attachment->id, 7 * 24 * 3600, 10, [this](const ModrinthShared::Response& res) {
         if (!res.ok) {
-            QToolTip::showText(QCursor::pos(), tr("Could not create an invite link: %1").arg(res.error), this);
+            CustomMessageBox::selectable(this, tr("Invite link"), tr("Could not create an invite link: %1").arg(res.error),
+                                         QMessageBox::Warning)
+                ->show();
             return;
         }
         const QString link = ModrinthShared::inviteLink(res.json.object().value("id").toString());
         QApplication::clipboard()->setText(link);
-        QToolTip::showText(QCursor::pos(), tr("Invite link copied to clipboard (7 days, 10 uses)"), this);
+        // A cursor-anchored tooltip vanishes on the next mouse move; the
+        // status bar sticks around long enough to actually read.
+        statusBar()->showMessage(tr("Invite link copied to clipboard (7 days, 10 uses)"), 8000);
     });
 }
 
@@ -1626,6 +1704,8 @@ void MainWindow::on_actionOpenWiki_triggered()
 
 void MainWindow::on_actionMoreNews_triggered()
 {
+    if (!m_newsChecker)
+        return;
     auto entries = m_newsChecker->getNewsEntries();
     NewsDialog news_dialog(entries, this);
     news_dialog.exec();
@@ -1633,6 +1713,8 @@ void MainWindow::on_actionMoreNews_triggered()
 
 void MainWindow::newsButtonClicked()
 {
+    if (!m_newsChecker)
+        return;
     auto entries = m_newsChecker->getNewsEntries();
     NewsDialog news_dialog(entries, this);
     news_dialog.toggleArticleList();

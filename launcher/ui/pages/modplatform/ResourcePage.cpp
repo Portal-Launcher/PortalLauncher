@@ -300,6 +300,9 @@ void ResourcePage::onSelectionChanged(QModelIndex curr, [[maybe_unused]] QModelI
 
     bool requestLoad = false;
     if (!currentPack || !currentPack->versionsLoaded) {
+        // Until this pack's versions arrive, the previous pack's selection
+        // index must not leak into the detail panel.
+        m_selectedVersionIndex = -1;
         m_ui->resourceSelectionButton->setText(tr("Loading versions..."));
         m_ui->resourceSelectionButton->setEnabled(false);
 
@@ -326,7 +329,9 @@ void ResourcePage::onSelectionChanged(QModelIndex curr, [[maybe_unused]] QModelI
 
 void ResourcePage::onVersionSelectionChanged(int index)
 {
-    m_selectedVersionIndex = m_ui->versionSelectionBox->itemData(index).toInt();
+    // index is -1 while the combo is being cleared; itemData(-1).toInt()
+    // would silently turn that into version 0.
+    m_selectedVersionIndex = index < 0 ? -1 : m_ui->versionSelectionBox->itemData(index).toInt();
     m_ui->packDetail->setSelectedVersion(m_selectedVersionIndex);
     updateSelectionButton();
 }

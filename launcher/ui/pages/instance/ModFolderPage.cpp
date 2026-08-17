@@ -46,6 +46,8 @@
 #include <QAction>
 #include <QEvent>
 #include <QKeyEvent>
+#include <QFileInfo>
+#include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
 #include <QSortFilterProxyModel>
@@ -102,6 +104,20 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     auto* revertUpdate = updateMenu->addAction(tr("Revert Last Mod Update"));
     revertUpdate->setToolTip(tr("Restore the mod files that were replaced by the most recent mod update."));
     connect(revertUpdate, &QAction::triggered, this, &ModFolderPage::revertLastUpdate);
+    // Grey the action out when there is nothing to revert, and say which
+    // update it would revert when there is.
+    connect(updateMenu, &QMenu::aboutToShow, this, [this, revertUpdate]() {
+        const auto snapshotPath = ModUpdateBackup::latestSnapshot(m_instance);
+        if (snapshotPath.has_value()) {
+            revertUpdate->setEnabled(true);
+            const QDateTime when = QFileInfo(snapshotPath.value()).lastModified();
+            revertUpdate->setText(when.isValid() ? tr("Revert Mod Update from %1").arg(QLocale().toString(when, QLocale::ShortFormat))
+                                                 : tr("Revert Last Mod Update"));
+        } else {
+            revertUpdate->setEnabled(false);
+            revertUpdate->setText(tr("Revert Last Mod Update"));
+        }
+    });
 
     ui->actionUpdateItem->setMenu(updateMenu);
 

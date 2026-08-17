@@ -86,6 +86,8 @@ class MainWindow : public QMainWindow {
 
    protected:
     QMenu* createPopupMenu() override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
    private slots:
     void onCatToggled(bool);

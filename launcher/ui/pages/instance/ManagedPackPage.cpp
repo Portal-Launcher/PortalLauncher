@@ -5,6 +5,7 @@
 #include "ManagedPackPage.h"
 #include <QDesktopServices>
 #include <QLineEdit>
+#include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
 #include "modplatform/ModIndex.h"
@@ -115,13 +116,16 @@ ManagedPackPage::ManagedPackPage(BaseInstance* inst, InstanceWindow* instance_wi
         openedImpl();
     });
 
-    // Unlink: turn a platform-managed pack back into a plain instance
-    auto* unlinkButton = new QPushButton(tr("Unlink from pack source…"), this);
-    unlinkButton->setToolTip(
-        tr("Stop tracking this instance as a managed modpack. The instance and its files stay; platform updates stop."));
-    if (auto* boxLayout = ui->packInformationBox->layout())
+    // Unlink: turn a platform-managed pack back into a plain instance.
+    // Only create the button once we know it can be placed in a layout, so it
+    // can never render unmanaged at the widget origin.
+    if (auto* boxLayout = ui->packInformationBox->layout()) {
+        auto* unlinkButton = new QPushButton(tr("Unlink from pack source…"), this);
+        unlinkButton->setToolTip(
+            tr("Stop tracking this instance as a managed modpack. The instance and its files stay; platform updates stop."));
         boxLayout->addWidget(unlinkButton);
-    connect(unlinkButton, &QPushButton::clicked, this, &ManagedPackPage::unlinkPack);
+        connect(unlinkButton, &QPushButton::clicked, this, &ManagedPackPage::unlinkPack);
+    }
 
     connect(ui->changelogTextBrowser, &QTextBrowser::anchorClicked, this, [](const QUrl url) {
         if (url.scheme().isEmpty()) {
@@ -222,8 +226,12 @@ void ManagedPackPage::unlinkPack()
         return;
 
     m_inst->unlinkManagedPack();
-    if (m_container)
-        m_container->refreshContainer();
+    // The refresh tears this page down (shouldDisplay() is now false); do it
+    // from the event loop, not from inside our own button's click handler.
+    if (m_container) {
+        auto* container = m_container;
+        QTimer::singleShot(0, this, [container]() { container->refreshContainer(); });
+    }
 }
 
 bool ManagedPackPage::shouldDisplay() const

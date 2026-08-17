@@ -88,6 +88,20 @@ QColor versionTypeColor(const ModPlatform::IndexedVersionType& type)
 
 }  // namespace
 
+bool ProjectDetailPanel::event(QEvent* event)
+{
+    // Re-derive palette-based colors (dimmed tags line, version type colors)
+    // when the theme changes at runtime; the baked-in palette would otherwise
+    // keep the previous theme's text color.
+    if ((event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::ThemeChange) && m_tagsLabel != nullptr) {
+        m_tagsLabel->setPalette(QPalette());
+        dimLabel(m_tagsLabel);
+        if (m_pack)
+            updateVersions();
+    }
+    return QWidget::event(event);
+}
+
 ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
 {
     auto* layout = new QVBoxLayout(this);
@@ -101,7 +115,7 @@ ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
 
     m_iconLabel = new QLabel(m_header);
     m_iconLabel->setFixedSize(64, 64);
-    m_iconLabel->setScaledContents(true);
+    m_iconLabel->setAlignment(Qt::AlignCenter);
     headerLayout->addWidget(m_iconLabel, 0, Qt::AlignTop);
 
     auto* headerText = new QVBoxLayout();
@@ -154,8 +168,14 @@ ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
     m_gallery->setWordWrap(true);
     m_gallery->setTextElideMode(Qt::ElideRight);
     m_gallery->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    m_gallery->setSelectionMode(QAbstractItemView::NoSelection);
+    m_gallery->setSelectionMode(QAbstractItemView::SingleSelection);
     connect(m_gallery, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
+        if (item != nullptr) {
+            openImageViewer(item->data(Qt::UserRole).toInt());
+        }
+    });
+    // Keyboard access: Enter/Return on a focused thumbnail opens the viewer too.
+    connect(m_gallery, &QListWidget::itemActivated, this, [this](QListWidgetItem* item) {
         if (item != nullptr) {
             openImageViewer(item->data(Qt::UserRole).toInt());
         }
@@ -278,15 +298,20 @@ void ProjectDetailPanel::rebuildHeader()
 {
     m_header->show();
 
-    // Icon
+    // Icon (letterboxed, never stretched)
     m_iconLabel->clear();
     if (!m_pack->logoUrl.isEmpty()) {
+        const QString logoKey = m_pack->logoUrl;
         QPixmap cached;
-        if (QPixmapCache::find(m_pack->logoUrl, &cached)) {
+        if (QPixmapCache::find(logoKey, &cached)) {
             m_iconLabel->setPixmap(cached);
         } else {
-            fetchImage(QUrl(m_pack->logoUrl), m_generation,
-                       [this](const QImage& image) { m_iconLabel->setPixmap(QPixmap::fromImage(image)); });
+            fetchImage(QUrl(m_pack->logoUrl), m_generation, [this, logoKey](const QImage& image) {
+                const QPixmap scaled = QPixmap::fromImage(image).scaled(m_iconLabel->size(), Qt::KeepAspectRatio,
+                                                                        Qt::SmoothTransformation);
+                QPixmapCache::insert(logoKey, scaled);
+                m_iconLabel->setPixmap(scaled);
+            });
         }
     }
 
@@ -296,7 +321,7 @@ void ProjectDetailPanel::rebuildHeader()
     if (m_pack->websiteUrl.isEmpty()) {
         title = name;
     } else {
-        title = QString("<a href=\"%1\" style=\"text-decoration:none\">%2</a>").arg(m_pack->websiteUrl, name);
+        title = QString("<a href=\"%1\" style=\"text-decoration:none\">%2</a>").arg(m_pack->websiteUrl.toHtmlEscaped(), name);
     }
     title = QString("<span style=\"font-size:%1pt; font-weight:600\">%2</span>").arg(font().pointSize() + 4).arg(title);
     if (!m_pack->authors.empty()) {
@@ -305,7 +330,7 @@ void ProjectDetailPanel::rebuildHeader()
             if (author.url.isEmpty()) {
                 authors.append(author.name.toHtmlEscaped());
             } else {
-                authors.append(QString("<a href=\"%1\">%2</a>").arg(author.url, author.name.toHtmlEscaped()));
+                authors.append(QString("<a href=\"%1\">%2</a>").arg(author.url.toHtmlEscaped(), author.name.toHtmlEscaped()));
             }
         }
         title += QString("&nbsp; %1").arg(tr("by %1").arg(authors.join(", ")));
@@ -349,7 +374,7 @@ void ProjectDetailPanel::rebuildHeader()
     QStringList links;
     auto addLink = [&links](const QString& url, const QString& label) {
         if (!url.isEmpty()) {
-            links.append(QString("<a href=\"%1\">%2</a>").arg(url, label));
+            links.append(QString("<a href=\"%1\">%2</a>").arg(url.toHtmlEscaped(), label));
         }
     };
     addLink(m_pack->websiteUrl, ModPlatform::ProviderCapabilities::readableName(m_pack->provider) + " ↗");
@@ -385,16 +410,22 @@ void ProjectDetailPanel::rebuildDescription()
 
 void ProjectDetailPanel::rebuildGallery()
 {
+    const auto& gallery = m_pack->extraData.gallery;
+
+    // Re-selecting the same pack: the thumbnails are already in place, no
+    // need to re-decode and re-scale every image.
+    if (m_gallery->count() > 0 && m_gallery->count() == gallery.size())
+        return;
+
     m_gallery->clear();
 
-    const auto& gallery = m_pack->extraData.gallery;
     for (int i = 0; i < gallery.size(); i++) {
         const auto& image = gallery[i];
 
         auto* item = new QListWidgetItem(image.title.isEmpty() ? tr("Screenshot %1").arg(i + 1) : image.title);
         item->setData(Qt::UserRole, i);
         if (!image.description.isEmpty()) {
-            item->setToolTip(image.description);
+            item->setToolTip(image.description.toHtmlEscaped());
         }
         item->setIcon(QIcon::fromTheme("screenshot-placeholder"));
         m_gallery->addItem(item);
@@ -402,10 +433,20 @@ void ProjectDetailPanel::rebuildGallery()
         const int generation = m_generation;
         const QUrl thumbUrl(image.thumbnailUrl.isEmpty() ? image.url : image.thumbnailUrl);
         const QUrl fullUrl(image.url);
-        auto applyThumb = [this, i](const QImage& img) {
+        const QString thumbKey = thumbUrl.toString() + "@thumb" + QString::number(m_gallery->iconSize().width());
+
+        QPixmap cachedThumb;
+        if (QPixmapCache::find(thumbKey, &cachedThumb)) {
+            item->setIcon(QIcon(cachedThumb));
+            continue;
+        }
+
+        auto applyThumb = [this, i, thumbKey](const QImage& img) {
             if (auto* thumbItem = m_gallery->item(i); thumbItem != nullptr && !img.isNull()) {
-                thumbItem->setIcon(QIcon(QPixmap::fromImage(img.scaled(m_gallery->iconSize(), Qt::KeepAspectRatio,
-                                                                       Qt::SmoothTransformation))));
+                const QPixmap scaled =
+                    QPixmap::fromImage(img.scaled(m_gallery->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                QPixmapCache::insert(thumbKey, scaled);
+                thumbItem->setIcon(QIcon(scaled));
             }
         };
         fetchImage(thumbUrl, generation, [this, generation, thumbUrl, fullUrl, applyThumb](const QImage& img) {
@@ -466,8 +507,10 @@ void ProjectDetailPanel::updateVersions()
                 mcVersions.append(mcVersion);
             }
         }
+        QString mcVersionsTooltip;
         if (mcVersions.size() > 4) {
             const int extras = mcVersions.size() - 4;
+            mcVersionsTooltip = mcVersions.join(", ");
             mcVersions = mcVersions.mid(0, 4);
             mcVersions.append(tr("+%1 more").arg(extras));
         }
@@ -481,6 +524,9 @@ void ProjectDetailPanel::updateVersions()
         }
         item->setText(2, loaders.join(", "));
         item->setText(3, mcVersions.join(", "));
+        if (!mcVersionsTooltip.isEmpty()) {
+            item->setToolTip(3, mcVersionsTooltip);
+        }
         item->setText(4, StringUtils::relativeTimeString(QDateTime::fromString(version.date, Qt::ISODateWithMs)));
         item->setToolTip(4, version.date);
         if (version.downloads >= 0) {

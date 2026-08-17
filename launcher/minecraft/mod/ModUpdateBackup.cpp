@@ -218,6 +218,14 @@ std::optional<ModUpdateBackup> ModUpdateBackup::load(const QString& snapshotPath
     backup.m_path = snapshotPath;
     backup.m_created = QDateTime::fromString(obj.value("created").toString(), Qt::ISODate);
 
+    // The file fields become path components under the mods folder and the
+    // snapshot folder; a manifest from an untrusted instance (e.g. inside an
+    // imported zip) must not be able to reach outside them.
+    auto isSafeManifestName = [](const QString& name) {
+        return name.isEmpty() ||
+               (!name.contains('/') && !name.contains('\\') && !name.contains("..") && !name.startsWith('.'));
+    };
+
     // Be lenient here: a partially written manifest should still allow reverting whatever it does describe
     for (const auto& value : obj.value("entries").toArray()) {
         if (!value.isObject()) {
@@ -234,6 +242,11 @@ std::optional<ModUpdateBackup> ModUpdateBackup::load(const QString& snapshotPath
 
         if (entry.oldFile.isEmpty() && entry.newFile.isEmpty()) {
             continue;  // nothing usable in this entry
+        }
+        if (!isSafeManifestName(entry.oldFile) || !isSafeManifestName(entry.newFile) ||
+            !isSafeManifestName(entry.oldIndexFile)) {
+            qWarning() << "Mod update snapshot manifest at" << manifestPath << "contains an unsafe path, skipping entry";
+            continue;
         }
 
         backup.m_entries.append(entry);
