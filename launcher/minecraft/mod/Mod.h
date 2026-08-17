@@ -110,6 +110,12 @@ class Mod : public Resource {
         bool wasReadAttempt = false;
     } mutable m_packImageCacheKey;
 
+    // Memo of the last scaled icon: the list view asks for the same 32x32
+    // pixmap on every repaint, and a smooth downscale per row per frame adds up.
+    mutable QPixmap m_scaledIconCache;
+    mutable QSize m_scaledIconSize;
+    mutable Qt::AspectRatioMode m_scaledIconMode = Qt::KeepAspectRatio;
+
     int m_requiredByCount = 0;
     int m_requiresCount = 0;
 };

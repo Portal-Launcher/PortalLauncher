@@ -252,6 +252,8 @@ QPixmap Mod::setIcon(QImage new_image) const
 
     if (m_packImageCacheKey.key.isValid())
         PixmapCache::remove(m_packImageCacheKey.key);
+    m_scaledIconCache = QPixmap();
+    m_scaledIconSize = QSize();
 
     // scale the image to avoid flooding the pixmapcache
     auto pixmap =
@@ -273,7 +275,14 @@ QPixmap Mod::icon(QSize size, Qt::AspectRatioMode mode) const
 
     QPixmap cached_image;
     if (PixmapCache::find(m_packImageCacheKey.key, &cached_image)) {
-        return pixmap_transform(cached_image);
+        if (size.isNull())
+            return cached_image;
+        if (m_scaledIconSize == size && m_scaledIconMode == mode && !m_scaledIconCache.isNull())
+            return m_scaledIconCache;
+        m_scaledIconCache = pixmap_transform(cached_image);
+        m_scaledIconSize = size;
+        m_scaledIconMode = mode;
+        return m_scaledIconCache;
     }
 
     // No valid image we can get

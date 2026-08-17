@@ -34,7 +34,7 @@ class PackUpdateChecker : public QObject {
 
    public:
     /// Queue a check of every managed instance. Respects the CheckPackUpdates
-    /// setting and is safe to call repeatedly; checks run one at a time.
+    /// setting and is safe to call repeatedly; a few checks run in parallel.
     static void checkAll();
 
    private:
@@ -42,12 +42,12 @@ class PackUpdateChecker : public QObject {
     static PackUpdateChecker* get();
 
     void enqueueAll();
-    void processNext();
+    void pump();
+    void startOne(const QString& instanceId);
     void evaluate(const QString& instanceId, const QString& type, const QVector<ModPlatform::IndexedVersion>& versions);
 
     QQueue<QString> m_queue;
-    bool m_busy = false;
-    Task::Ptr m_job;
+    QList<Task::Ptr> m_jobs;  // in-flight version lookups
     ModrinthAPI m_modrinthApi;
     FlameAPI m_flameApi;
 };

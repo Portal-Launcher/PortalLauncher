@@ -184,17 +184,17 @@ QString StringUtils::humanReadableCount(double number, int decimal_points)
 {
     static const QStringList s_count_units{ "k", "M", "B" };
 
-    if (abs(number) < 1000) {
+    if (std::abs(number) < 1000) {
         return QString::number(number, 'f', 0);
     }
 
     int u = -1;
-    double r = pow(10, decimal_points);
+    double r = std::pow(10, decimal_points);
 
     do {
         number /= 1000;
         u++;
-    } while (round(abs(number) * r) / r >= 1000 && u < s_count_units.length() - 1);
+    } while (std::round(std::abs(number) * r) / r >= 1000 && u < s_count_units.length() - 1);
 
     QString result = QString::number(number, 'f', decimal_points);
     if (result.endsWith(".0")) {

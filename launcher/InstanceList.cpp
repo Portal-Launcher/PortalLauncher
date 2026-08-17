@@ -193,13 +193,16 @@ QVariant InstanceList::data(const QModelIndex& index, int role) const
                            .arg(QLocale().toString(QDateTime::fromMSecsSinceEpoch(pdata->lastLaunch()), QLocale::ShortFormat));
             if (pdata->totalTimePlayed() > 0)
                 tip += tr("\nTime played: %1").arg(Time::prettifyDuration(pdata->totalTimePlayed()));
-            if (auto attachment = ModrinthShared::Attachment::load(pdata->instanceRoot())) {
-                if (attachment->isOwner())
+            // Qt re-queries the tooltip constantly while it is visible, so
+            // this must not re-read the attachment file every time.
+            const auto shareInfo = ModrinthShared::cachedShareInfo(pdata->instanceRoot());
+            if (!shareInfo.role.isEmpty()) {
+                if (shareInfo.role == QLatin1String("owner"))
                     tip += tr("\nShared with friends (hosting, version %1)")
-                               .arg(attachment->appliedVersion < 0 ? tr("none") : QString::number(attachment->appliedVersion));
+                               .arg(shareInfo.appliedVersion < 0 ? tr("none") : QString::number(shareInfo.appliedVersion));
                 else
                     tip += tr("\nShared pack (joined, version %1)")
-                               .arg(attachment->appliedVersion < 0 ? tr("none") : QString::number(attachment->appliedVersion));
+                               .arg(shareInfo.appliedVersion < 0 ? tr("none") : QString::number(shareInfo.appliedVersion));
             }
             if (pdata->hasUpdateAvailable()) {
                 const QString version = pdata->updateAvailableVersion();

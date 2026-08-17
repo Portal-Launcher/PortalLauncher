@@ -20,6 +20,8 @@ Resource::Resource(QFileInfo file_info) : QObject()
 void Resource::setFile(QFileInfo file_info)
 {
     m_file_info = file_info;
+    m_symlink_under_cache = -1;
+    m_hardlink_cache = -1;
     parseFile();
 }
 
@@ -274,20 +276,31 @@ auto Resource::destroyMetadata(const QDir& index_dir) -> void
 
 bool Resource::isSymLinkUnder(const QString& instPath) const
 {
-    if (isSymLink())
-        return true;
+    if (m_symlink_under_cache >= 0)
+        return m_symlink_under_cache != 0;
 
-    auto instDir = QDir(instPath);
+    bool result;
+    if (isSymLink()) {
+        result = true;
+    } else {
+        auto instDir = QDir(instPath);
 
-    auto relAbsPath = instDir.relativeFilePath(m_file_info.absoluteFilePath());
-    auto relCanonPath = instDir.relativeFilePath(m_file_info.canonicalFilePath());
+        auto relAbsPath = instDir.relativeFilePath(m_file_info.absoluteFilePath());
+        auto relCanonPath = instDir.relativeFilePath(m_file_info.canonicalFilePath());
 
-    return relAbsPath != relCanonPath;
+        result = relAbsPath != relCanonPath;
+    }
+    m_symlink_under_cache = result ? 1 : 0;
+    return result;
 }
 
 bool Resource::isMoreThanOneHardLink() const
 {
-    return FS::hardLinkCount(m_file_info.absoluteFilePath()) > 1;
+    if (m_hardlink_cache >= 0)
+        return m_hardlink_cache != 0;
+    const bool result = FS::hardLinkCount(m_file_info.absoluteFilePath()) > 1;
+    m_hardlink_cache = result ? 1 : 0;
+    return result;
 }
 
 auto Resource::getOriginalFileName() const -> QString

@@ -62,49 +62,56 @@ void PackUpdateChecker::enqueueAll()
         if (!m_queue.contains(inst->id()))
             m_queue.enqueue(inst->id());
     }
-    if (!m_busy)
-        processNext();
+    pump();
 }
 
-void PackUpdateChecker::processNext()
+void PackUpdateChecker::pump()
 {
-    if (m_queue.isEmpty()) {
-        m_busy = false;
-        m_job = nullptr;
-        return;
-    }
-    m_busy = true;
+    // A handful of checks in parallel: 20 managed packs at one serialized
+    // round-trip each was several seconds of wall-clock for no reason.
+    constexpr int MAX_CONCURRENT_CHECKS = 4;
+    while (m_jobs.size() < MAX_CONCURRENT_CHECKS && !m_queue.isEmpty())
+        startOne(m_queue.dequeue());
+}
 
-    const QString instanceId = m_queue.dequeue();
+void PackUpdateChecker::startOne(const QString& instanceId)
+{
     auto inst = APPLICATION->instances()->getInstanceById(instanceId);
-    if (!inst || !inst->isManagedPack()) {
-        processNext();
+    if (!inst || !inst->isManagedPack())
         return;
-    }
     const QString type = inst->getManagedPackType();
 
     ResourceAPI::Callback<QVector<ModPlatform::IndexedVersion>> callbacks{};
     callbacks.on_succeed = [this, instanceId, type](QVector<ModPlatform::IndexedVersion>& versions) {
         evaluate(instanceId, type, versions);
-        processNext();
     };
-    callbacks.on_fail = [this, instanceId](const QString& reason, int) {
+    callbacks.on_fail = [instanceId](const QString& reason, int) {
         qDebug() << "Pack update check for" << instanceId << "failed:" << reason;
-        processNext();
     };
-    callbacks.on_abort = [this]() { processNext(); };
+    callbacks.on_abort = []() {};
 
     ModPlatform::IndexedPack pack;
     pack.addonId = inst->getManagedPackID();
 
     ResourceAPI* api = type == "modrinth" ? static_cast<ResourceAPI*>(&m_modrinthApi) : static_cast<ResourceAPI*>(&m_flameApi);
-    m_job = api->getProjectVersions({ .pack = std::make_shared<ModPlatform::IndexedPack>(pack),
-                                      .mcVersions = {},
-                                      .loaders = {},
-                                      .resourceType = ModPlatform::ResourceType::Modpack,
-                                      .includeChangelog = false },
-                                    std::move(callbacks));
-    m_job->start();
+    auto job = api->getProjectVersions({ .pack = std::make_shared<ModPlatform::IndexedPack>(pack),
+                                         .mcVersions = {},
+                                         .loaders = {},
+                                         .resourceType = ModPlatform::ResourceType::Modpack,
+                                         .includeChangelog = false },
+                                       std::move(callbacks));
+    m_jobs.append(job);
+    Task* raw = job.get();
+    connect(raw, &Task::finished, this, [this, raw]() {
+        for (int i = 0; i < m_jobs.size(); i++) {
+            if (m_jobs[i].get() == raw) {
+                m_jobs.removeAt(i);
+                break;
+            }
+        }
+        pump();
+    });
+    job->start();
 }
 
 void PackUpdateChecker::evaluate(const QString& instanceId, const QString& type, const QVector<ModPlatform::IndexedVersion>& versions)

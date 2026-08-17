@@ -175,6 +175,9 @@ class Resource : public QObject {
      * @param instPath path to an instance directory
      * @return true
      * @return false
+     *
+     * The answer is cached: both this and isMoreThanOneHardLink() open a file
+     * handle on Windows, and they get asked per row per repaint of the list.
      */
     bool isSymLinkUnder(const QString& instPath) const;
 
@@ -201,6 +204,10 @@ class Resource : public QObject {
 
     /* Whether the resource is enabled (e.g. shows up in the game) or not. */
     bool m_enabled = true;
+
+    /* Lazily computed link states (-1 unknown, 0 no, 1 yes); reset in setFile. */
+    mutable int m_symlink_under_cache = -1;
+    mutable int m_hardlink_cache = -1;
 
     QList<const char*> m_issues;
 
