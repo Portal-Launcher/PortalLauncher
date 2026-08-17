@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 
 #include "FileSystem.h"
 
@@ -40,11 +41,14 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
     att.configSpec = obj.value("configSpec").toString();
     att.lastPushSignature = obj.value("lastPushSignature").toString();
     att.iconSha1 = obj.value("iconSha1").toString();
+    att.iconCheckedAt = static_cast<qint64>(obj.value("iconCheckedAt").toDouble(0));
     att.autoPush = obj.value("autoPush").toBool(false);
     att.quickFingerprint = obj.value("quickFingerprint").toString();
+    att.lastPushEnvironment = obj.value("lastPushEnvironment").toString();
     for (const auto& value : obj.value("lastChangeLog").toArray())
         att.lastChangeLog.append(value.toString());
     att.lastChangeVersion = obj.value("lastChangeVersion").toInt(-1);
+    att.lastInviteLink = obj.value("lastInviteLink").toString();
     for (const auto& value : obj.value("managedFiles").toArray()) {
         auto fileObj = value.toObject();
         ManagedFile mf;
@@ -58,7 +62,10 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
     for (const auto& value : obj.value("managedConfigs").toArray())
         att.managedConfigs.append(value.toString());
 
-    if (att.id.isEmpty() || att.role.isEmpty())
+    // The id ends up in service URL paths and in an icon filename, so a
+    // malformed one (from a hand-edited or malicious file) must never load.
+    static const QRegularExpression idPattern(QStringLiteral("^[0-9A-Za-z]{1,64}$"));
+    if (att.id.isEmpty() || att.role.isEmpty() || !idPattern.match(att.id).hasMatch())
         return std::nullopt;
     return att;
 }
@@ -72,10 +79,13 @@ bool Attachment::save(const QString& instanceRoot) const
     obj["configSpec"] = configSpec;
     obj["lastPushSignature"] = lastPushSignature;
     obj["iconSha1"] = iconSha1;
+    obj["iconCheckedAt"] = static_cast<double>(iconCheckedAt);
     obj["autoPush"] = autoPush;
     obj["quickFingerprint"] = quickFingerprint;
+    obj["lastPushEnvironment"] = lastPushEnvironment;
     obj["lastChangeLog"] = QJsonArray::fromStringList(lastChangeLog);
     obj["lastChangeVersion"] = lastChangeVersion;
+    obj["lastInviteLink"] = lastInviteLink;
     QJsonArray files;
     for (const auto& mf : managedFiles) {
         QJsonObject fileObj;
@@ -101,28 +111,49 @@ void Attachment::remove(const QString& instanceRoot)
     QFile::remove(filePath(instanceRoot));
 }
 
-QString cachedRole(const QString& instanceRoot)
+ShareInfo cachedShareInfo(const QString& instanceRoot)
 {
     struct CacheEntry {
         QDateTime mtime;
         qint64 size = -1;
-        QString role;
+        ShareInfo info;
+        qint64 checkedAtMs = 0;
     };
     static QHash<QString, CacheEntry> cache;
 
+    // This runs from paint code (instance-grid delegates) and tooltip
+    // queries, so even the stat call is too expensive to repeat per frame;
+    // trust a recent answer.
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    auto it = cache.find(instanceRoot);
+    if (it != cache.end() && nowMs - it->checkedAtMs < 5000)
+        return it->info;
+
     const QFileInfo info(Attachment::filePath(instanceRoot));
     if (!info.exists()) {
-        cache.remove(instanceRoot);
+        CacheEntry entry;
+        entry.checkedAtMs = nowMs;
+        cache.insert(instanceRoot, entry);
         return {};
     }
-    auto it = cache.constFind(instanceRoot);
-    if (it != cache.constEnd() && it->mtime == info.lastModified() && it->size == info.size())
-        return it->role;
+    if (it != cache.end() && it->mtime == info.lastModified() && it->size == info.size()) {
+        it->checkedAtMs = nowMs;
+        return it->info;
+    }
 
     const auto attachment = Attachment::load(instanceRoot);
-    const CacheEntry entry{ info.lastModified(), info.size(), attachment ? attachment->role : QString() };
+    CacheEntry entry{ info.lastModified(), info.size(), {}, nowMs };
+    if (attachment) {
+        entry.info.role = attachment->role;
+        entry.info.appliedVersion = attachment->appliedVersion;
+    }
     cache.insert(instanceRoot, entry);
-    return entry.role;
+    return entry.info;
+}
+
+QString cachedRole(const QString& instanceRoot)
+{
+    return cachedShareInfo(instanceRoot).role;
 }
 
 QString quickContentFingerprint(const QString& gameRoot, bool includeConfigs)

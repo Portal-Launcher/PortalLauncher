@@ -2,6 +2,7 @@
 #include "ModrinthSharedSyncTask.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -19,24 +20,13 @@
 
 namespace {
 
-QString folderForProjectType(const QString& projectType)
+QString folderForType(const QString& type)
 {
-    if (projectType == QLatin1String("resourcepack"))
+    if (type == QLatin1String("resourcepack"))
         return "resourcepacks";
-    if (projectType == QLatin1String("shader"))
+    if (type == QLatin1String("shader"))
         return "shaderpacks";
-    if (projectType == QLatin1String("datapack"))
-        return "datapacks";
-    return "mods";
-}
-
-QString folderForFileType(const QString& fileType)
-{
-    if (fileType == QLatin1String("resourcepack"))
-        return "resourcepacks";
-    if (fileType == QLatin1String("shader"))
-        return "shaderpacks";
-    if (fileType == QLatin1String("datapack"))
+    if (type == QLatin1String("datapack"))
         return "datapacks";
     return "mods";
 }
@@ -44,6 +34,16 @@ QString folderForFileType(const QString& fileType)
 bool isSafeFileName(const QString& name)
 {
     return !name.isEmpty() && !name.contains('/') && !name.contains('\\') && !name.startsWith('.') && !name.contains("..");
+}
+
+/** Every URL the service hands us must be https on a Modrinth host; anything
+ *  else could feed unverified executable files straight into mods/. */
+bool isTrustedDownloadUrl(const QUrl& url)
+{
+    if (url.scheme() != QLatin1String("https"))
+        return false;
+    const QString host = url.host().toLower();
+    return host == QLatin1String("modrinth.com") || host.endsWith(QLatin1String(".modrinth.com"));
 }
 
 }  // namespace
@@ -119,7 +119,15 @@ void ModrinthSharedSyncTask::onLatestVersion(const QJsonObject& version)
         return;
     }
     if (remote == m_attachment.appliedVersion) {
-        // Content unchanged - still mirror an owner icon change.
+        // Content unchanged - still mirror an owner icon change, but only
+        // once a day. The icon is cosmetic and not worth two extra network
+        // round-trips on every single launch.
+        const qint64 now = QDateTime::currentSecsSinceEpoch();
+        if (m_attachment.iconCheckedAt > 0 && now - m_attachment.iconCheckedAt < 24 * 3600) {
+            setStatus(tr("Shared pack is up to date."));
+            emitSucceeded();
+            return;
+        }
         adoptOwnerIcon([this]() {
             m_attachment.save(m_instance->instanceRoot());
             setStatus(tr("Shared pack is up to date."));
@@ -213,16 +221,18 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         if (!isSafeFileName(fileName))
             continue;
 
-        bool isDatapackOnly = false;
+        bool hasDatapackLoader = false;
+        bool hasInstanceLoader = false;
         const auto loaders = version.value("loaders").toArray();
         for (const auto& lv : loaders) {
             if (lv.toString() == QLatin1String("datapack"))
-                isDatapackOnly = true;
+                hasDatapackLoader = true;
             if (lv.toString() == instanceLoader)
-                isDatapackOnly = false;
+                hasInstanceLoader = true;
         }
+        const bool isDatapackOnly = hasDatapackLoader && !hasInstanceLoader;
         const QString projectType = projectTypeById.value(version.value("project_id").toString());
-        const QString folder = isDatapackOnly ? QStringLiteral("datapacks") : folderForProjectType(projectType);
+        const QString folder = isDatapackOnly ? QStringLiteral("datapacks") : folderForType(projectType);
 
         TargetFile target;
         target.rel = folder + '/' + fileName;
@@ -245,11 +255,23 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         if (!isSafeFileName(fileName))
             continue;
         TargetFile target;
-        target.rel = folderForFileType(fileType) + '/' + fileName;
+        target.rel = folderForType(fileType) + '/' + fileName;
         target.url = ext.value("url").toString();
         target.size = static_cast<qint64>(ext.value("file_size").toDouble(-1));
         target.source = "external";
         m_targets.append(target);
+    }
+
+    // Validate every download URL before touching any local file.
+    for (const auto& target : m_targets) {
+        if (!isTrustedDownloadUrl(QUrl(target.url))) {
+            softOrFail(tr("Refusing to download %1 from an untrusted address (%2).").arg(target.rel, target.url));
+            return;
+        }
+    }
+    if (!m_configBundleUrl.isEmpty() && !isTrustedDownloadUrl(QUrl(m_configBundleUrl))) {
+        softOrFail(tr("Refusing to download the shared config bundle from an untrusted address (%1).").arg(m_configBundleUrl));
+        return;
     }
 
     // Human-readable changelog for this update (shown before playing and kept
@@ -287,9 +309,9 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
             const QString pretty = prettyBySource.value(target.source, QFileInfo(target.rel).fileName());
             if (!oldByRel.contains(target.rel))
                 m_changeLog.append(tr("Added: %1").arg(pretty));
-            else if (!target.sha1.isEmpty() && oldByRel[target.rel].sha1 != target.sha1)
+            else if (!target.sha1.isEmpty() && oldByRel.value(target.rel).sha1 != target.sha1)
                 m_changeLog.append(tr("Updated: %1").arg(pretty));
-            else if (target.sha1.isEmpty() && target.size >= 0 && oldByRel[target.rel].size != target.size)
+            else if (target.sha1.isEmpty() && target.size >= 0 && oldByRel.value(target.rel).size != target.size)
                 m_changeLog.append(tr("Updated: %1").arg(pretty));
         }
         for (const auto& old : m_attachment.managedFiles) {
@@ -315,7 +337,7 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         const QString abs = FS::PathCombine(gameRoot, target.rel);
         const QString absDisabled = abs + ".disabled";
         const bool haveOld = oldByRel.contains(target.rel);
-        const auto& old = oldByRel[target.rel];
+        const auto old = oldByRel.value(target.rel);
 
         bool exists = QFile::exists(abs);
         bool existsDisabled = !exists && QFile::exists(absDisabled);
@@ -347,6 +369,7 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
     setStatus(tr("Downloading %1 files…").arg(queued));
     connect(m_downloadJob.get(), &Task::succeeded, this, &ModrinthSharedSyncTask::afterDownloads);
     connect(m_downloadJob.get(), &Task::failed, this, [this](QString reason) { softOrFail(reason); });
+    connect(m_downloadJob.get(), &Task::aborted, this, [this]() { emitAborted(); });
     connect(m_downloadJob.get(), &Task::progress, this,
             [this](qint64 current, qint64 total) { setProgress(current, total); });
     m_downloadJob->start();
@@ -361,8 +384,9 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
 {
     // Mirror the owner's instance icon locally (best-effort, never fatal).
     ModrinthShared::getInstanceInfo(this, m_attachment.id, [this, next](const ModrinthShared::Response& res) {
+        m_attachment.iconCheckedAt = QDateTime::currentSecsSinceEpoch();
         const QString iconUrl = res.ok && res.json.isObject() ? res.json.object().value("icon").toString() : QString();
-        if (iconUrl.isEmpty()) {
+        if (iconUrl.isEmpty() || !isTrustedDownloadUrl(QUrl(iconUrl))) {
             next();
             return;
         }
@@ -377,17 +401,16 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
                 next();
                 return;
             }
+            // Write straight into the icon folder: IconList::installIcon uses
+            // QFile::copy, which refuses to overwrite, so icon *changes* would
+            // silently never land after the first adoption.
             const QString iconName = "shared-" + m_attachment.id;
-            if (m_tempDir.isValid()) {
-                const QString tempFile = FS::PathCombine(m_tempDir.path(), iconName + ".png");
-                QFile out(tempFile);
-                if (out.open(QIODevice::WriteOnly)) {
-                    out.write(iconRes.body);
-                    out.close();
-                    APPLICATION->icons()->installIcon(tempFile, iconName + ".png");
-                    m_instance->setIconKey(iconName);
-                    m_attachment.iconSha1 = sha1;
-                }
+            const QString target = FS::PathCombine(APPLICATION->icons()->getDirectory(), iconName + ".png");
+            QFile out(target);
+            if (out.open(QIODevice::WriteOnly | QIODevice::Truncate) && out.write(iconRes.body) == iconRes.body.size()) {
+                out.close();
+                m_instance->setIconKey(iconName);
+                m_attachment.iconSha1 = sha1;
             }
             next();
         });
@@ -396,7 +419,7 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
 
 void ModrinthSharedSyncTask::applyConfigBundle(std::function<void()> next)
 {
-    if (m_configBundleUrl.isEmpty()) {
+    if (m_configBundleUrl.isEmpty() || !m_tempDir.isValid()) {
         next();
         return;
     }

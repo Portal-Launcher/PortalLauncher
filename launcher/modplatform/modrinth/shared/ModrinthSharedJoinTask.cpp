@@ -48,12 +48,17 @@ std::unique_ptr<MinecraftInstance> ModrinthSharedJoinTask::createInstance()
     instance->setName(name());
     instance->saveNow();
 
-    // Attach as a member; the first sync fills in the content.
+    // Attach as a member; the first sync fills in the content. Without this
+    // file the instance would exist but never sync, so a failed write has to
+    // fail the join loudly instead of reporting success.
     ModrinthShared::Attachment attachment;
     attachment.id = m_sharedInstanceId;
     attachment.role = "member";
     attachment.appliedVersion = -1;
-    attachment.save(m_stagingPath);
+    if (!attachment.save(m_stagingPath)) {
+        setError(tr("Could not write the shared-instance link file."));
+        return nullptr;
+    }
 
     return instance;
 }

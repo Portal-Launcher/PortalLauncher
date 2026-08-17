@@ -3,6 +3,8 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDateTime>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -75,8 +77,11 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
         m_inviteLinkEdit = new QLineEdit(m_ownerBox);
         m_inviteLinkEdit->setReadOnly(true);
         m_inviteLinkEdit->setPlaceholderText(tr("Invite link appears here"));
+        m_copyLinkButton = new QPushButton(tr("Copy"), m_ownerBox);
+        m_copyLinkButton->setEnabled(false);
         m_newLinkButton = new QPushButton(tr("New invite link"), m_ownerBox);
         linkRow->addWidget(m_inviteLinkEdit, 1);
+        linkRow->addWidget(m_copyLinkButton);
         linkRow->addWidget(m_newLinkButton);
         box->addLayout(linkRow);
 
@@ -93,7 +98,6 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
 
         box->addWidget(new QLabel(tr("Members:"), m_ownerBox));
         m_membersList = new QListWidget(m_ownerBox);
-        m_membersList->setMaximumHeight(140);
         box->addWidget(m_membersList);
         auto* memberButtons = new QHBoxLayout();
         m_removeMemberButton = new QPushButton(tr("Remove selected member"), m_ownerBox);
@@ -128,8 +132,20 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
     connect(m_signInButton, &QPushButton::clicked, this, &ModrinthSharingPage::signInOrOut);
     connect(m_shareButton, &QPushButton::clicked, this, &ModrinthSharingPage::shareInstance);
     connect(m_pushButton, &QPushButton::clicked, this, &ModrinthSharingPage::pushUpdate);
+    connect(m_copyLinkButton, &QPushButton::clicked, this, [this]() {
+        if (m_inviteLinkEdit->text().isEmpty())
+            return;
+        QApplication::clipboard()->setText(m_inviteLinkEdit->text());
+        m_inviteLinkEdit->selectAll();
+    });
     connect(m_newLinkButton, &QPushButton::clicked, this, &ModrinthSharingPage::newInviteLink);
     connect(m_inviteUserButton, &QPushButton::clicked, this, &ModrinthSharingPage::inviteByUsername);
+    connect(m_usernameEdit, &QLineEdit::returnPressed, this, &ModrinthSharingPage::inviteByUsername);
+    connect(m_membersList, &QListWidget::itemSelectionChanged, this, [this]() {
+        auto* item = m_membersList->currentItem();
+        const QString id = item ? item->data(Qt::UserRole).toString() : QString();
+        m_removeMemberButton->setEnabled(!id.isEmpty() && id != ModrinthShared::userId());
+    });
     connect(m_inviteFriendButton, &QPushButton::clicked, this, [this]() {
         auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
         if (!attachment)
@@ -163,6 +179,14 @@ void ModrinthSharingPage::openedImpl()
     refresh();
 }
 
+bool ModrinthSharingPage::event(QEvent* event)
+{
+    // Re-derive the palette-based colors when the theme changes at runtime.
+    if (event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::ThemeChange)
+        refresh();
+    return QWidget::event(event);
+}
+
 QString ModrinthSharingPage::currentConfigSpec() const
 {
     auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
@@ -191,14 +215,28 @@ void ModrinthSharingPage::refresh()
         QString state = tr("<b>Sharing is on.</b> Last pushed version: %1")
                             .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion));
         if (!attachment->quickFingerprint.isEmpty()) {
-            const QString now = ModrinthShared::quickContentFingerprint(
-                m_instance->gameRoot(), !attachment->configSpec.isEmpty() && attachment->configSpec != QLatin1String("none"));
-            if (now != attachment->quickFingerprint)
-                state += tr("<br><span style=\"color:#e6a23c\">Your local files changed since the last push - push to "
-                            "update your friends.</span>");
+            // The fingerprint walks the content and config folders; only redo
+            // that walk every so often, refresh() runs a lot.
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            if (nowMs - m_fingerprintCheckedAtMs > 10 * 1000) {
+                m_fingerprintCheckedAtMs = nowMs;
+                const QString now = ModrinthShared::quickContentFingerprint(
+                    m_instance->gameRoot(), !attachment->configSpec.isEmpty() && attachment->configSpec != QLatin1String("none"));
+                m_fingerprintDirty = now != attachment->quickFingerprint;
+            }
+            if (m_fingerprintDirty) {
+                // Amber warning, readable on light and dark backgrounds alike.
+                const bool darkBase = palette().color(QPalette::Base).lightness() < 128;
+                state += tr("<br><span style=\"color:%1\">Your local files changed since the last push - push to "
+                            "update your friends.</span>")
+                             .arg(darkBase ? QStringLiteral("#e6a23c") : QStringLiteral("#9a6700"));
+            }
         }
         m_stateLabel->setText(state);
         m_autoPushCheck->setChecked(attachment->autoPush);
+        if (m_inviteLinkEdit->text().isEmpty() && !attachment->lastInviteLink.isEmpty())
+            m_inviteLinkEdit->setText(attachment->lastInviteLink);
+        m_copyLinkButton->setEnabled(!m_inviteLinkEdit->text().isEmpty());
         int idx = m_configsCombo->findData(attachment->configSpec);
         if (idx < 0 && !attachment->configSpec.isEmpty()) {
             m_configsCombo->addItem(tr("Custom (%1)").arg(attachment->configSpec), attachment->configSpec);
@@ -207,8 +245,9 @@ void ModrinthSharingPage::refresh()
         m_configsCombo->setCurrentIndex(idx < 0 ? 0 : idx);
         for (auto* widget : { static_cast<QWidget*>(m_pushButton), static_cast<QWidget*>(m_newLinkButton),
                               static_cast<QWidget*>(m_inviteUserButton), static_cast<QWidget*>(m_inviteFriendButton),
-                              static_cast<QWidget*>(m_removeMemberButton), static_cast<QWidget*>(m_stopButton) })
+                              static_cast<QWidget*>(m_stopButton) })
             widget->setEnabled(signedIn);
+        m_removeMemberButton->setEnabled(false);  // follows the selection
         if (signedIn)
             loadMembers();
     } else if (member) {
@@ -328,7 +367,13 @@ void ModrinthSharingPage::newInviteLink()
         const QString link = ModrinthShared::inviteLink(res.json.object().value("id").toString());
         m_inviteLinkEdit->setText(link);
         m_inviteLinkEdit->selectAll();
+        m_copyLinkButton->setEnabled(true);
         QApplication::clipboard()->setText(link);
+        // Keep the link around so it is still here when the page reopens.
+        if (auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot())) {
+            attachment->lastInviteLink = link;
+            attachment->save(m_instance->instanceRoot());
+        }
         m_stateLabel->setText(tr("<b>Invite link copied to your clipboard!</b> It lasts 7 days or 10 uses."));
     });
 }
@@ -436,6 +481,12 @@ void ModrinthSharingPage::leaveShare()
                                  "longer receive the owner's updates.")
                                   .arg(m_instance->name())) != QMessageBox::Yes)
         return;
+    // Tell the service too (best effort) so the owner's member list does not
+    // keep showing us forever.
+    auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
+    if (attachment && ModrinthShared::isSignedIn())
+        ModrinthShared::removeMembers(nullptr, attachment->id, { ModrinthShared::userId() },
+                                      [](const ModrinthShared::Response&) {});
     ModrinthShared::Attachment::remove(m_instance->instanceRoot());
     refresh();
 }

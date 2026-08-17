@@ -29,10 +29,13 @@ class Attachment {
     QString configSpec;         // "", "all", or comma-separated prefixes
     QString lastPushSignature;  // owner only: content signature of last push
     QString iconSha1;           // sha1 of the last uploaded (owner) / adopted (member) icon
+    qint64 iconCheckedAt = 0;   // member only: when the owner's icon was last checked (secs since epoch)
     bool autoPush = false;      // owner only: push automatically before launching
     QString quickFingerprint;   // owner only: fast content fingerprint at last push
+    QString lastPushEnvironment;  // owner only: game/loader versions + config spec at last push
     QStringList lastChangeLog;  // member: human-readable summary of the last applied update
     int lastChangeVersion = -1;
+    QString lastInviteLink;     // owner only: the invite link minted most recently
     QList<ManagedFile> managedFiles;
     QStringList managedConfigs;
 
@@ -45,10 +48,20 @@ class Attachment {
     static void remove(const QString& instanceRoot);
 };
 
+/** What the paint/hover paths need to know about a share, without the cost of
+ *  parsing the whole attachment (managed file list included) each time. */
+struct ShareInfo {
+    QString role;  // "owner", "member", or empty when not shared
+    int appliedVersion = -1;
+};
+
 /**
- * Cheap, paint-safe lookup of the share role ("owner", "member", or empty).
- * Backed by an mtime-checked cache so it can run from delegates.
+ * Cheap, paint-safe lookup of the share state. Backed by an mtime-checked,
+ * time-guarded cache so it can run from delegates and tooltip queries.
  */
+ShareInfo cachedShareInfo(const QString& instanceRoot);
+
+/** Shorthand for cachedShareInfo().role. */
 QString cachedRole(const QString& instanceRoot);
 
 /**

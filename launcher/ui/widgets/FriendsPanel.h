@@ -11,6 +11,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 
 class FriendsPanel : public QDockWidget {
@@ -24,6 +26,7 @@ class FriendsPanel : public QDockWidget {
 
    private slots:
     void rebuild();
+    void scheduleRebuild();
     void addFriendClicked();
     void showContextMenu(const QPoint& pos);
     void itemDoubleClicked(QTreeWidgetItem* item, int column);
@@ -41,8 +44,10 @@ class FriendsPanel : public QDockWidget {
     QList<Invite> m_invites;
 
     QLabel* m_headerLabel;
+    QToolButton* m_refreshButton;
     QPushButton* m_signInButton;
     QTreeWidget* m_tree;
     QLineEdit* m_addEdit;
     QPushButton* m_addButton;
+    QTimer m_rebuildTimer;  // coalesces bursts of presence updates into one rebuild
 };

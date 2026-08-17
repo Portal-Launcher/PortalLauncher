@@ -32,4 +32,6 @@ class ModrinthSignInTask : public Task {
 
     QTcpServer* m_server = nullptr;
     bool m_done = false;
+    bool m_aborted = false;
+    int m_connectionCount = 0;
 };

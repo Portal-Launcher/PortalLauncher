@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QMessageBox>
+#include <QScrollBar>
 #include <QVBoxLayout>
 
 #include "Application.h"
@@ -43,8 +44,13 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
 
     auto* headerRow = new QHBoxLayout();
     m_headerLabel = new QLabel(body);
+    m_refreshButton = new QToolButton(body);
+    m_refreshButton->setIcon(QIcon::fromTheme("refresh"));
+    m_refreshButton->setAutoRaise(true);
+    m_refreshButton->setToolTip(tr("Refresh the friend list and invites"));
     m_signInButton = new QPushButton(tr("Sign in…"), body);
     headerRow->addWidget(m_headerLabel, 1);
+    headerRow->addWidget(m_refreshButton);
     headerRow->addWidget(m_signInButton);
     layout->addLayout(headerRow);
 
@@ -75,14 +81,31 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
         ModrinthFriends::get()->refresh();
         rebuild();
     });
+    connect(m_refreshButton, &QToolButton::clicked, this, [this]() {
+        if (!ModrinthShared::isSignedIn())
+            return;
+        ModrinthFriends::get()->ensureConnected();
+        ModrinthFriends::get()->refresh();
+        reloadInvites();
+    });
     connect(m_addButton, &QPushButton::clicked, this, &FriendsPanel::addFriendClicked);
     connect(m_addEdit, &QLineEdit::returnPressed, this, &FriendsPanel::addFriendClicked);
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this, &FriendsPanel::showContextMenu);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this, &FriendsPanel::itemDoubleClicked);
-    connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, &FriendsPanel::rebuild);
+    // Presence updates can arrive in bursts (one message per friend); coalesce
+    // them so the tree rebuilds once instead of flickering per message.
+    m_rebuildTimer.setSingleShot(true);
+    m_rebuildTimer.setInterval(150);
+    connect(&m_rebuildTimer, &QTimer::timeout, this, &FriendsPanel::rebuild);
+    connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, &FriendsPanel::scheduleRebuild);
     connect(ModrinthFriends::get(), &ModrinthFriends::inviteNotification, this, &FriendsPanel::reloadInvites);
 
     rebuild();
+}
+
+void FriendsPanel::scheduleRebuild()
+{
+    m_rebuildTimer.start();
 }
 
 void FriendsPanel::showEvent(QShowEvent* event)
@@ -130,9 +153,11 @@ void FriendsPanel::rebuild()
 {
     const bool signedIn = ModrinthShared::isSignedIn();
     m_signInButton->setVisible(!signedIn);
+    m_refreshButton->setVisible(signedIn);
     m_addEdit->setEnabled(signedIn);
     m_addButton->setEnabled(signedIn);
 
+    const int scrollPos = m_tree->verticalScrollBar() ? m_tree->verticalScrollBar()->value() : 0;
     m_tree->clear();
     if (!signedIn) {
         m_headerLabel->setText(tr("Sign in to see your Modrinth friends."));
@@ -141,6 +166,18 @@ void FriendsPanel::rebuild()
 
     const auto friends = ModrinthFriends::get()->friends();
     int onlineCount = 0;
+
+    // The presence socket only carries pack names; build the lookup tables
+    // once instead of scanning every instance per online friend.
+    QHash<QString, QPair<QString, QString>> inviteByName;   // lowercased name -> (id, name)
+    for (const auto& invite : m_invites)
+        inviteByName.insert(invite.instanceName.trimmed().toLower(), { invite.instanceId, invite.instanceName });
+    QHash<QString, QPair<QString, QString>> instanceByName;  // lowercased name -> (id, name)
+    auto* instances = APPLICATION->instances();
+    for (int i = 0; i < instances->count(); i++) {
+        auto* inst = instances->at(i);
+        instanceByName.insert(inst->name().trimmed().toLower(), { inst->id(), inst->name() });
+    }
 
     auto makeSection = [this](const QString& title) {
         auto* section = new QTreeWidgetItem(m_tree, { title });
@@ -192,22 +229,14 @@ void FriendsPanel::rebuild()
             if (!f.playing.isEmpty()) {
                 // The presence socket only tells us the pack's name, so match
                 // pending invites and installed instances by that name.
-                const QString playing = f.playing.trimmed();
-                for (const auto& invite : m_invites) {
-                    if (QString::compare(invite.instanceName.trimmed(), playing, Qt::CaseInsensitive) == 0) {
-                        friendInviteId = invite.instanceId;
-                        friendInviteName = invite.instanceName;
-                        break;
-                    }
+                const QString playing = f.playing.trimmed().toLower();
+                if (const auto invite = inviteByName.constFind(playing); invite != inviteByName.constEnd()) {
+                    friendInviteId = invite->first;
+                    friendInviteName = invite->second;
                 }
-                auto* instances = APPLICATION->instances();
-                for (int i = 0; i < instances->count(); i++) {
-                    auto* inst = instances->at(i);
-                    if (QString::compare(inst->name().trimmed(), playing, Qt::CaseInsensitive) == 0) {
-                        localInstanceId = inst->id();
-                        localInstanceName = inst->name();
-                        break;
-                    }
+                if (const auto inst = instanceByName.constFind(playing); inst != instanceByName.constEnd()) {
+                    localInstanceId = inst->first;
+                    localInstanceName = inst->second;
                 }
                 if (!localInstanceId.isEmpty()) {
                     // Already installed: launching beats joining.
@@ -232,13 +261,13 @@ void FriendsPanel::rebuild()
             item->setData(0, FriendInviteIdRole, friendInviteId);
             item->setData(0, FriendInviteNameRole, friendInviteName);
             item->setToolTip(0, tr("You have a pending invite for \"%1\" - double-click to join and play along.")
-                                    .arg(friendInviteName));
+                                    .arg(friendInviteName.toHtmlEscaped()));
         }
         if (!localInstanceId.isEmpty()) {
             item->setData(0, LocalInstanceIdRole, localInstanceId);
             item->setData(0, LocalInstanceNameRole, localInstanceName);
             item->setToolTip(0, tr("You have \"%1\" installed - double-click to launch it and play along.")
-                                    .arg(localInstanceName));
+                                    .arg(localInstanceName.toHtmlEscaped()));
         }
         if (f.online) {
             // Online green, picked per theme so it stays readable on light and
@@ -259,7 +288,15 @@ void FriendsPanel::rebuild()
         order[i]->setExpanded(true);
     }
 
-    m_headerLabel->setText(tr("<b>%1</b> - %2 online").arg(ModrinthShared::username()).arg(onlineCount));
+    if (order.isEmpty()) {
+        auto* empty = new QTreeWidgetItem(m_tree, { tr("No friends yet - add one below.") });
+        empty->setFlags(Qt::NoItemFlags);
+    }
+
+    if (m_tree->verticalScrollBar())
+        m_tree->verticalScrollBar()->setValue(scrollPos);
+
+    m_headerLabel->setText(tr("<b>%1</b> - %2 online").arg(ModrinthShared::username().toHtmlEscaped()).arg(onlineCount));
 }
 
 void FriendsPanel::addFriendClicked()
@@ -268,7 +305,7 @@ void FriendsPanel::addFriendClicked()
     if (name.isEmpty())
         return;
     m_addButton->setEnabled(false);
-    ModrinthFriends::get()->addFriend(name, [this](const QString& error) {
+    ModrinthFriends::get()->addFriend(this, name, [this](const QString& error) {
         m_addButton->setEnabled(true);
         if (!error.isEmpty()) {
             QMessageBox::warning(this, tr("Add friend"), error);
@@ -280,7 +317,7 @@ void FriendsPanel::addFriendClicked()
 
 void FriendsPanel::acceptRequest(const QString& userId, const QString& username)
 {
-    ModrinthFriends::get()->addFriend(userId, [this, username](const QString& error) {
+    ModrinthFriends::get()->addFriend(this, userId, [this, username](const QString& error) {
         if (!error.isEmpty())
             QMessageBox::warning(this, tr("Accept request"), error);
     });
@@ -327,10 +364,15 @@ void FriendsPanel::launchLocalInstance(const QString& instanceId)
 
 void FriendsPanel::joinInvite(const QString& instanceId, const QString& instanceName)
 {
-    if (QMessageBox::question(this, tr("Join \"%1\"?").arg(instanceName),
-                              tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are not "
-                                 "reviewed by Modrinth - only accept invites from people you trust.")
-                                  .arg(instanceName)) != QMessageBox::Yes)
+    // Plain text on purpose: the pack name is remote-controlled and must never
+    // be able to restyle the dialog that carries the trust warning.
+    QMessageBox confirm(QMessageBox::Question, tr("Join \"%1\"?").arg(instanceName),
+                        tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are not "
+                           "reviewed by Modrinth - only accept invites from people you trust.")
+                            .arg(instanceName),
+                        QMessageBox::Yes | QMessageBox::No, this);
+    confirm.setTextFormat(Qt::PlainText);
+    if (confirm.exec() != QMessageBox::Yes)
         return;
     ModrinthShared::acceptPendingInvite(this, instanceId, [this, instanceId, instanceName](const ModrinthShared::Response& res) {
         if (!res.ok && res.status != 404) {
@@ -380,8 +422,11 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
     QMenu menu(this);
     if (incoming) {
         menu.addAction(tr("Accept request"), this, [this, userId, username]() { acceptRequest(userId, username); });
-        menu.addAction(tr("Ignore request"), this, [userId]() {
-            ModrinthFriends::get()->removeFriend(userId, [](const QString&) {});
+        menu.addAction(tr("Ignore request"), this, [this, userId]() {
+            ModrinthFriends::get()->removeFriend(this, userId, [this](const QString& error) {
+                if (!error.isEmpty())
+                    QMessageBox::warning(this, tr("Ignore request"), error);
+            });
         });
     } else if (accepted) {
         const QString localInstanceId = item->data(0, LocalInstanceIdRole).toString();
@@ -400,11 +445,17 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
         menu.addAction(tr("Remove friend"), this, [this, userId, username]() {
             if (QMessageBox::question(this, tr("Remove friend"), tr("Remove %1 from your friends?").arg(username)) ==
                 QMessageBox::Yes)
-                ModrinthFriends::get()->removeFriend(userId, [](const QString&) {});
+                ModrinthFriends::get()->removeFriend(this, userId, [this](const QString& error) {
+                    if (!error.isEmpty())
+                        QMessageBox::warning(this, tr("Remove friend"), error);
+                });
         });
     } else {
-        menu.addAction(tr("Cancel request"), this, [userId]() {
-            ModrinthFriends::get()->removeFriend(userId, [](const QString&) {});
+        menu.addAction(tr("Cancel request"), this, [this, userId]() {
+            ModrinthFriends::get()->removeFriend(this, userId, [this](const QString& error) {
+                if (!error.isEmpty())
+                    QMessageBox::warning(this, tr("Cancel request"), error);
+            });
         });
     }
     menu.exec(m_tree->viewport()->mapToGlobal(pos));

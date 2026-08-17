@@ -51,7 +51,10 @@ ModrinthInviteFriendDialog::ModrinthInviteFriendDialog(QWidget* parent,
     connect(m_inviteButton, &QPushButton::clicked, this, &ModrinthInviteFriendDialog::inviteSelected);
     connect(m_copyLinkButton, &QPushButton::clicked, this, &ModrinthInviteFriendDialog::copyLinkInstead);
     connect(m_friendsList, &QListWidget::itemDoubleClicked, this, &ModrinthInviteFriendDialog::inviteSelected);
-    connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, &ModrinthInviteFriendDialog::rebuildList);
+    connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, [this]() {
+        m_friendsLoaded = true;
+        rebuildList();
+    });
 
     // Reuse the friends data the Friends panel already maintains.
     ModrinthFriends::get()->ensureConnected();
@@ -63,8 +66,12 @@ ModrinthInviteFriendDialog::ModrinthInviteFriendDialog(QWidget* parent,
 void ModrinthInviteFriendDialog::loadMembers()
 {
     ModrinthShared::getMembers(this, m_sharedInstanceId, [this](const ModrinthShared::Response& res) {
-        if (!res.ok)
+        if (!res.ok) {
+            // Not fatal, but without this list "already has access" greying
+            // cannot work; say so instead of failing silently.
+            m_statusLabel->setText(tr("Could not check who already has access - inviting may report an error."));
             return;
+        }
         m_memberIds.clear();
         if (res.json.isObject()) {
             for (const auto& value : res.json.object().value("users").toArray())
@@ -104,9 +111,14 @@ void ModrinthInviteFriendDialog::rebuildList()
     }
 
     if (m_friendsList->count() == 0) {
-        m_statusLabel->setText(
-            tr("You have no Modrinth friends yet. Add some in the Friends panel, or use \"Copy invite link instead\" "
-               "and send the link over any chat."));
+        m_statusLabel->setText(m_friendsLoaded
+                                   ? tr("You have no Modrinth friends yet. Add some in the Friends panel, or use "
+                                        "\"Copy invite link instead\" and send the link over any chat.")
+                                   : tr("Loading your friends…"));
+        m_statusIsPlaceholder = true;
+    } else if (m_statusIsPlaceholder) {
+        m_statusLabel->clear();
+        m_statusIsPlaceholder = false;
     }
 }
 

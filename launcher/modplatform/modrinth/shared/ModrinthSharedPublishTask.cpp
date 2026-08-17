@@ -108,6 +108,28 @@ void ModrinthSharedPublishTask::executeTask()
         }
     }
 
+    // Fast path: if nothing in the content folders changed since the last push
+    // (names/sizes/mtimes and the environment all match), skip the expensive
+    // full-content hashing entirely. This keeps the pre-launch auto-push
+    // instant for large packs.
+    const QString configSpec = m_attachment.configSpec;
+    const bool configsShared = !configSpec.isEmpty() && configSpec != QLatin1String("none");
+    m_environment = m_gameVersion + '/' + m_loader + '/' + m_loaderVersion + '|' + configSpec;
+    if (!m_force && m_hasAttachment && m_attachment.appliedVersion >= 0 && !m_attachment.quickFingerprint.isEmpty() &&
+        m_environment == m_attachment.lastPushEnvironment &&
+        ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), configsShared) == m_attachment.quickFingerprint) {
+        const QString oldIconSha1 = m_attachment.iconSha1;
+        uploadIconIfChanged([this, oldIconSha1]() {
+            if (m_attachment.iconSha1 != oldIconSha1)
+                m_attachment.save(m_instance->instanceRoot());
+            setStatus(tr("Everything is already up to date."));
+            m_pushed = false;
+            m_pushedVersion = m_attachment.appliedVersion;
+            emitSucceeded();
+        });
+        return;
+    }
+
     setStatus(tr("Scanning instance content…"));
     setProgress(1, 6);
     scanContent();
@@ -226,12 +248,13 @@ void ModrinthSharedPublishTask::afterClassify()
         }
     }
 
-    const QString signature = computeSignature();
-    if (!m_force && m_hasAttachment && signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
+    m_signature = computeSignature();
+    if (!m_force && m_hasAttachment && m_signature == m_attachment.lastPushSignature && m_attachment.appliedVersion >= 0) {
         // Content unchanged - but the icon may still have changed.
         uploadIconIfChanged([this]() {
             m_attachment.quickFingerprint =
                 ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), !m_configPaths.isEmpty());
+            m_attachment.lastPushEnvironment = m_environment;
             m_attachment.save(m_instance->instanceRoot());
             setStatus(tr("Everything is already up to date."));
             m_pushed = false;
@@ -309,6 +332,10 @@ void ModrinthSharedPublishTask::createRemoteVersion()
         }
         auto obj = res.json.object();
         m_newVersion = obj.value("version").toInt(-1);
+        if (m_newVersion < 0) {
+            emitFailed(tr("The shared-instances service returned no version number."));
+            return;
+        }
         m_uploads = obj.value("external_files").toArray();
         m_uploadIndex = 0;
         m_activeUploads = 0;
@@ -326,9 +353,9 @@ void ModrinthSharedPublishTask::pumpUploads()
     constexpr int MAX_CONCURRENT_UPLOADS = 4;
     if (m_uploadFailed)
         return;
-    while (m_activeUploads < MAX_CONCURRENT_UPLOADS && m_uploadIndex < m_uploads.size())
+    while (!m_uploadFailed && m_activeUploads < MAX_CONCURRENT_UPLOADS && m_uploadIndex < m_uploads.size())
         startOneUpload(m_uploads[m_uploadIndex++].toObject());
-    if (m_activeUploads == 0 && m_uploadIndex >= m_uploads.size())
+    if (!m_uploadFailed && m_activeUploads == 0 && m_uploadIndex >= m_uploads.size())
         uploadIconIfChanged([this]() { finish(m_newVersion); });
 }
 
@@ -428,9 +455,10 @@ void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)
 void ModrinthSharedPublishTask::finish(int version)
 {
     m_attachment.appliedVersion = version;
-    m_attachment.lastPushSignature = computeSignature();
+    m_attachment.lastPushSignature = m_signature;
     m_attachment.quickFingerprint =
         ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), !m_configPaths.isEmpty());
+    m_attachment.lastPushEnvironment = m_environment;
     m_attachment.save(m_instance->instanceRoot());
     m_pushed = true;
     m_pushedVersion = version;

@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QObject>
+#include <QPointer>
 
 #include "Application.h"
 #include "InstanceList.h"
@@ -21,7 +22,10 @@ void runJoinFlow(QWidget* parent,
                  const QString& instanceName,
                  std::function<void(bool, const QString&)> done)
 {
-    getLatestVersion(parent, instanceId, [parent, instanceId, instanceName, done](const Response& res) {
+    // The nested dialog event loops below can outlive the widget that started
+    // the flow (e.g. the user closes the dialog behind them); guard it.
+    QPointer<QWidget> guard(parent);
+    getLatestVersion(parent, instanceId, [guard, instanceId, instanceName, done](const Response& res) {
         if (!res.ok || !res.json.isObject()) {
             done(false, res.error.isEmpty() ? QObject::tr("Could not fetch the shared pack.") : res.error);
             return;
@@ -40,7 +44,7 @@ void runJoinFlow(QWidget* parent,
 
         auto* joinTask = new ModrinthSharedJoinTask(instanceId, instanceName, version);
         std::unique_ptr<Task> wrapped(APPLICATION->instances()->wrapInstanceTask(joinTask));
-        ProgressDialog createDialog(parent);
+        ProgressDialog createDialog(guard.data());
         createDialog.setSkipButton(true, QObject::tr("Abort"));
         if (createDialog.execWithTask(wrapped.get()) != QDialog::Accepted) {
             done(false, wrapped->failReason().isEmpty() ? QObject::tr("Join canceled.") : wrapped->failReason());
@@ -58,7 +62,7 @@ void runJoinFlow(QWidget* parent,
         }
         if (created) {
             ModrinthSharedSyncTask syncTask(created, /*softFail*/ false);
-            ProgressDialog syncDialog(parent);
+            ProgressDialog syncDialog(guard.data());
             syncDialog.setSkipButton(true, QObject::tr("Abort"));
             syncDialog.execWithTask(&syncTask);
         }
@@ -86,9 +90,10 @@ void joinFromInviteRef(QWidget* parent, const QString& inviteRef, std::function<
         refreshSessionIfNeeded(parent);
     }
 
-    getInviteInfo(parent, inviteId, [parent, inviteId, done](const Response& res) {
+    QPointer<QWidget> guard(parent);
+    getInviteInfo(parent, inviteId, [guard, inviteId, done](const Response& res) {
         if (!res.ok || !res.json.isObject()) {
-            QMessageBox::warning(parent, QObject::tr("Invite not found"),
+            QMessageBox::warning(guard.data(), QObject::tr("Invite not found"),
                                  QObject::tr("That invite does not exist or has expired. Ask your friend for a new link."));
             done(false);
             return;
@@ -99,27 +104,32 @@ void joinFromInviteRef(QWidget* parent, const QString& inviteRef, std::function<
         if (instanceName.trimmed().isEmpty())
             instanceName = QObject::tr("Shared pack");
 
-        if (QMessageBox::question(parent, QObject::tr("Join \"%1\"?").arg(instanceName),
-                                  QObject::tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are "
-                                              "not reviewed by Modrinth - only accept invites from people you trust.")
-                                      .arg(instanceName)) != QMessageBox::Yes) {
+        // Plain text: the pack name is remote-controlled and must never be
+        // able to restyle the dialog that carries the trust warning.
+        QMessageBox confirm(QMessageBox::Question, QObject::tr("Join \"%1\"?").arg(instanceName),
+                            QObject::tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are "
+                                        "not reviewed by Modrinth - only accept invites from people you trust.")
+                                .arg(instanceName),
+                            QMessageBox::Yes | QMessageBox::No, guard.data());
+        confirm.setTextFormat(Qt::PlainText);
+        if (confirm.exec() != QMessageBox::Yes || guard.isNull()) {
             done(false);
             return;
         }
 
-        acceptInvite(parent, instanceId, inviteId, [parent, instanceId, instanceName, done](const Response& acceptRes) {
+        acceptInvite(guard.data(), instanceId, inviteId, [guard, instanceId, instanceName, done](const Response& acceptRes) {
             if (!acceptRes.ok) {
-                QMessageBox::warning(parent, QObject::tr("Could not accept the invite"), acceptRes.error);
+                QMessageBox::warning(guard.data(), QObject::tr("Could not accept the invite"), acceptRes.error);
                 done(false);
                 return;
             }
-            runJoinFlow(parent, instanceId, instanceName, [parent, instanceName, done](bool joined, const QString& message) {
+            runJoinFlow(guard.data(), instanceId, instanceName, [guard, instanceName, done](bool joined, const QString& message) {
                 if (!joined) {
-                    QMessageBox::warning(parent, QObject::tr("Could not join"), message);
+                    QMessageBox::warning(guard.data(), QObject::tr("Could not join"), message);
                     done(false);
                     return;
                 }
-                QMessageBox::information(parent, QObject::tr("Joined!"),
+                QMessageBox::information(guard.data(), QObject::tr("Joined!"),
                                          QObject::tr("\"%1\" is now in your instance list. It checks for the owner's updates "
                                                      "every time you press Play.")
                                              .arg(instanceName));

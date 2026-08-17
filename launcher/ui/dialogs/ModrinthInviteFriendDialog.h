@@ -35,6 +35,8 @@ class ModrinthInviteFriendDialog : public QDialog {
     QString m_sharedInstanceId;
     QSet<QString> m_memberIds;   // friends who already have access
     QSet<QString> m_invitedIds;  // invited from this dialog
+    bool m_friendsLoaded = false;       // first friends payload has arrived
+    bool m_statusIsPlaceholder = false; // status label shows loading/empty text
 
     QListWidget* m_friendsList;
     QPushButton* m_inviteButton;

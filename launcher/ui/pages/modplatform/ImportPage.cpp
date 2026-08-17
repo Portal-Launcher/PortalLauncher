@@ -41,6 +41,8 @@
 
 #include <QFileDialog>
 #include <QMimeDatabase>
+#include <QPointer>
+#include <QTimer>
 #include <QValidator>
 #include <utility>
 
@@ -53,6 +55,7 @@
 
 #include "InstanceImportTask.h"
 #include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
+#include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "net/NetJob.h"
 
 class UrlValidator : public QValidator {
@@ -111,16 +114,25 @@ void ImportPage::updateState()
         const bool isModrinthHost = url.host().compare("modrinth.com", Qt::CaseInsensitive) == 0 ||
                                     url.host().endsWith(".modrinth.com", Qt::CaseInsensitive);
         if (isModrinthHost && url.path().split('/', Qt::SkipEmptyParts).contains("share")) {
-            if (m_joiningShare)
+            // Wait for a complete link (this fires on every keystroke), and
+            // never start the modal join flow from inside the textChanged
+            // signal itself: it runs nested event loops, and this page can be
+            // destroyed while they are up.
+            if (ModrinthShared::parseInviteRef(input).isEmpty() || m_joiningShare)
                 return;
             m_joiningShare = true;
             dialog->setSuggestedPack();
-            ModrinthShared::joinFromInviteRef(this, input, [this](bool joined) {
-                m_joiningShare = false;
-                if (joined)
-                    dialog->reject();  // the join flow already created the instance
-                else
-                    ui->modpackEdit->selectAll();
+            QPointer<ImportPage> self(this);
+            QTimer::singleShot(0, this, [self, input]() {
+                if (!self)
+                    return;
+                ModrinthShared::joinFromInviteRef(self, input, [self](bool joined) {
+                    if (!self)
+                        return;
+                    self->m_joiningShare = false;
+                    if (joined)
+                        self->dialog->reject();  // the join flow already created the instance
+                });
             });
             return;
         }

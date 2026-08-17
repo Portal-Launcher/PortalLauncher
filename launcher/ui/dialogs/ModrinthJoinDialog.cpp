@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ModrinthJoinDialog.h"
 
+#include <QClipboard>
 #include <QDialogButtonBox>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMessageBox>
@@ -15,6 +17,21 @@
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
 #include "ui/dialogs/ProgressDialog.h"
+
+namespace {
+/** The trust prompt, in plain text so a remote-controlled pack name can never
+ *  restyle the dialog that carries the warning. */
+bool confirmJoin(QWidget* parent, const QString& instanceName)
+{
+    QMessageBox confirm(QMessageBox::Question, QObject::tr("Join \"%1\"?").arg(instanceName),
+                        QObject::tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are not "
+                                    "reviewed by Modrinth - only accept invites from people you trust.")
+                            .arg(instanceName),
+                        QMessageBox::Yes | QMessageBox::No, parent);
+    confirm.setTextFormat(Qt::PlainText);
+    return confirm.exec() == QMessageBox::Yes;
+}
+}  // namespace
 
 ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
 {
@@ -40,14 +57,18 @@ ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
 
     m_invitesLabel = new QLabel(tr("Invites sent to your Modrinth account:"), this);
     m_invitesList = new QListWidget(this);
-    m_invitesList->setMaximumHeight(120);
+    m_invitesList->setMaximumHeight(180);
     m_acceptInviteButton = new QPushButton(tr("Accept selected invite"), this);
+    m_acceptInviteButton->setEnabled(false);
     layout->addWidget(m_invitesLabel);
     layout->addWidget(m_invitesList);
     layout->addWidget(m_acceptInviteButton);
     m_invitesLabel->hide();
     m_invitesList->hide();
     m_acceptInviteButton->hide();
+    connect(m_invitesList, &QListWidget::itemSelectionChanged, this,
+            [this]() { m_acceptInviteButton->setEnabled(m_invitesList->currentItem() != nullptr &&
+                                                        !m_invitesList->currentItem()->data(Qt::UserRole).toString().isEmpty()); });
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setWordWrap(true);
@@ -65,6 +86,12 @@ ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
 void ModrinthJoinDialog::showEvent(QShowEvent* event)
 {
     QDialog::showEvent(event);
+    // If an invite link is already on the clipboard, save the user the paste.
+    if (m_linkEdit->text().isEmpty()) {
+        const QString clip = QGuiApplication::clipboard()->text().trimmed();
+        if (!clip.isEmpty() && clip.contains('/') && !ModrinthShared::parseInviteRef(clip).isEmpty())
+            m_linkEdit->setText(clip);
+    }
     if (!m_loadedInvites && ModrinthShared::isSignedIn()) {
         m_loadedInvites = true;
         ModrinthShared::refreshSessionIfNeeded(this);
@@ -90,9 +117,24 @@ bool ModrinthJoinDialog::ensureSignedIn()
 
 void ModrinthJoinDialog::loadPendingInvites()
 {
-    ModrinthShared::getNotifications(this, [this](const ModrinthShared::Response& res) {
-        if (!res.ok || !res.json.isArray())
+    // Show the section immediately with a loading row, so a slow network does
+    // not look like "no invites".
+    auto showPlaceholder = [this](const QString& text) {
+        m_invitesList->clear();
+        auto* placeholder = new QListWidgetItem(text, m_invitesList);
+        placeholder->setFlags(Qt::NoItemFlags);
+        m_invitesLabel->show();
+        m_invitesList->show();
+        m_acceptInviteButton->show();
+        m_acceptInviteButton->setEnabled(false);
+    };
+    showPlaceholder(tr("Checking for invites…"));
+
+    ModrinthShared::getNotifications(this, [this, showPlaceholder](const ModrinthShared::Response& res) {
+        if (!res.ok || !res.json.isArray()) {
+            showPlaceholder(tr("Could not check for invites right now."));
             return;
+        }
         QSet<QString> joined;
         auto* instances = APPLICATION->instances();
         for (int i = 0; i < instances->count(); i++) {
@@ -116,10 +158,8 @@ void ModrinthJoinDialog::loadPendingInvites()
             item->setData(Qt::UserRole, instanceId);
             item->setData(Qt::UserRole + 1, name);
         }
-        const bool any = m_invitesList->count() > 0;
-        m_invitesLabel->setVisible(any);
-        m_invitesList->setVisible(any);
-        m_acceptInviteButton->setVisible(any);
+        if (m_invitesList->count() == 0)
+            showPlaceholder(tr("No pending invites right now."));
     });
 }
 
@@ -148,10 +188,7 @@ void ModrinthJoinDialog::joinByLink()
         if (instanceName.trimmed().isEmpty())
             instanceName = tr("Shared pack");
 
-        if (QMessageBox::question(this, tr("Join \"%1\"?").arg(instanceName),
-                                  tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are "
-                                     "not reviewed by Modrinth - only accept invites from people you trust.")
-                                      .arg(instanceName)) != QMessageBox::Yes) {
+        if (!confirmJoin(this, instanceName)) {
             m_joinButton->setEnabled(true);
             m_statusLabel->clear();
             return;
@@ -175,15 +212,12 @@ void ModrinthJoinDialog::acceptSelectedInvite()
     if (!ensureSignedIn())
         return;
     auto* item = m_invitesList->currentItem();
-    if (!item)
+    if (!item || item->data(Qt::UserRole).toString().isEmpty())
         return;
     const QString instanceId = item->data(Qt::UserRole).toString();
     const QString name = item->data(Qt::UserRole + 1).toString();
 
-    if (QMessageBox::question(this, tr("Join \"%1\"?").arg(name),
-                              tr("You are about to install \"%1\" from a shared instance.\n\nShared instances are not "
-                                 "reviewed by Modrinth - only accept invites from people you trust.")
-                                  .arg(name)) != QMessageBox::Yes)
+    if (!confirmJoin(this, name))
         return;
 
     m_acceptInviteButton->setEnabled(false);

@@ -96,7 +96,7 @@ void refreshSessionIfNeeded(QObject* ctx)
 void refreshSession(QObject* ctx, Callback cb)
 {
     request(ctx, "POST", QUrl(apiBase() + "/session/refresh"), QByteArray(), QByteArray(), Auth::Labrinth,
-            [](const Response& res) {
+            [cb](const Response& res) {
                 if (res.ok && res.json.isObject()) {
                     QString newToken = res.json.object().value("session").toString();
                     if (!newToken.isEmpty()) {
@@ -105,13 +105,20 @@ void refreshSession(QObject* ctx, Callback cb)
                                    QString::number(QDateTime::currentSecsSinceEpoch() + 7 * 24 * 3600));
                     }
                 }
+                if (cb)
+                    cb(res);
             });
-    // The caller-supplied callback is invoked separately to keep this reusable.
-    Q_UNUSED(cb);
 }
 
 // ---------------------------------------------------------------------------
 // Generic request plumbing
+
+/** The session token must never travel to a host we do not control. */
+static bool isAuthorizedHost(const QUrl& url)
+{
+    const QString host = url.host().toLower();
+    return host == QUrl(apiBase()).host().toLower() || host == QUrl(serviceBaseUrl()).host().toLower();
+}
 
 void request(QObject* ctx,
              const QByteArray& verb,
@@ -121,6 +128,14 @@ void request(QObject* ctx,
              Auth auth,
              Callback cb)
 {
+    if (auth != Auth::None && !isAuthorizedHost(url)) {
+        Response bad;
+        bad.error = QStringLiteral("Refusing to send credentials to %1").arg(url.host());
+        if (cb)
+            QMetaObject::invokeMethod(ctx ? ctx : qApp, [cb, bad]() { cb(bad); }, Qt::QueuedConnection);
+        return;
+    }
+
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader, APPLICATION->getUserAgent().toUtf8());
     if (!contentType.isEmpty())
@@ -138,9 +153,10 @@ void request(QObject* ctx,
     req.setTransferTimeout(5 * 60 * 1000);
 
     QNetworkReply* reply = APPLICATION->network()->sendCustomRequest(req, verb, body);
+    // Always reap the reply, even if the context object dies before it lands.
+    QObject::connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
     QPointer<QObject> guard(ctx);
     QObject::connect(reply, &QNetworkReply::finished, ctx ? ctx : reply, [reply, guard, ctx, cb, verb, url]() {
-        reply->deleteLater();
         if (ctx && guard.isNull())
             return;
 
@@ -208,17 +224,23 @@ void validateToken(QObject* ctx, const QString& explicitToken, Callback cb)
     req.setRawHeader("Authorization", explicitToken.toUtf8());
     req.setTransferTimeout(30 * 1000);
     QNetworkReply* reply = APPLICATION->network()->get(req);
+    QObject::connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
     QPointer<QObject> guard(ctx);
     QObject::connect(reply, &QNetworkReply::finished, ctx ? ctx : reply, [reply, guard, ctx, cb]() {
-        reply->deleteLater();
         if (ctx && guard.isNull())
             return;
         Response out;
         out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        out.json = QJsonDocument::fromJson(reply->readAll());
-        out.ok = reply->error() == QNetworkReply::NoError && out.status == 200;
-        if (!out.ok)
-            out.error = QStringLiteral("Token validation failed (HTTP %1)").arg(out.status);
+        QJsonParseError parseError{};
+        auto doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
+        if (parseError.error == QJsonParseError::NoError)
+            out.json = doc;
+        out.ok = reply->error() == QNetworkReply::NoError && out.status == 200 && out.json.isObject();
+        if (!out.ok) {
+            const QString detail = reply->error() != QNetworkReply::NoError ? reply->errorString()
+                                                                            : QStringLiteral("HTTP %1").arg(out.status);
+            out.error = QStringLiteral("Token validation failed: %1").arg(detail);
+        }
         if (cb)
             cb(out);
     });
@@ -229,13 +251,22 @@ void lookupUserByName(QObject* ctx, const QString& name, Callback cb)
     getJson(ctx, QUrl(apiBase() + "/user/" + QString::fromUtf8(QUrl::toPercentEncoding(name))), Auth::None, std::move(cb));
 }
 
+/** Deliver a canned response the same way a real one would arrive: queued,
+ *  guarded by the context's lifetime, and only if a callback exists. */
+static void deliverEmptyArray(QObject* ctx, const Callback& cb)
+{
+    if (!cb)
+        return;
+    Response empty;
+    empty.ok = true;
+    empty.json = QJsonDocument(QJsonArray());
+    QMetaObject::invokeMethod(ctx ? ctx : qApp, [cb, empty]() { cb(empty); }, Qt::QueuedConnection);
+}
+
 void getUsersByIds(QObject* ctx, const QStringList& ids, Callback cb)
 {
     if (ids.isEmpty()) {
-        Response empty;
-        empty.ok = true;
-        empty.json = QJsonDocument(QJsonArray());
-        cb(empty);
+        deliverEmptyArray(ctx, cb);
         return;
     }
     getJson(ctx, QUrl(apiBase() + "/users?ids=" + idsQuery(ids)), Auth::None, std::move(cb));
@@ -255,10 +286,7 @@ void lookupVersionFiles(QObject* ctx, const QStringList& sha1Hashes, Callback cb
 void getVersionsBulk(QObject* ctx, const QStringList& versionIds, Callback cb)
 {
     if (versionIds.isEmpty()) {
-        Response empty;
-        empty.ok = true;
-        empty.json = QJsonDocument(QJsonArray());
-        cb(empty);
+        deliverEmptyArray(ctx, cb);
         return;
     }
     getJson(ctx, QUrl(apiBase() + "/versions?ids=" + idsQuery(versionIds)), Auth::None, std::move(cb));
@@ -267,10 +295,7 @@ void getVersionsBulk(QObject* ctx, const QStringList& versionIds, Callback cb)
 void getProjectsBulk(QObject* ctx, const QStringList& projectIds, Callback cb)
 {
     if (projectIds.isEmpty()) {
-        Response empty;
-        empty.ok = true;
-        empty.json = QJsonDocument(QJsonArray());
-        cb(empty);
+        deliverEmptyArray(ctx, cb);
         return;
     }
     getJson(ctx, QUrl(apiBase() + "/projects?ids=" + idsQuery(projectIds)), Auth::None, std::move(cb));
@@ -371,10 +396,11 @@ void uploadBytes(QObject* ctx, const QUrl& uploadUrl, const QByteArray& bytes, C
 {
     // Uploads must stay on the shared-instances service origin (same check as
     // the official app makes).
-    if (QUrl(serviceBaseUrl()).host() != uploadUrl.host()) {
+    if (QUrl(serviceBaseUrl()).host().compare(uploadUrl.host(), Qt::CaseInsensitive) != 0) {
         Response bad;
         bad.error = QStringLiteral("Upload URL has an unexpected origin: %1").arg(uploadUrl.host());
-        cb(bad);
+        if (cb)
+            QMetaObject::invokeMethod(ctx ? ctx : qApp, [cb, bad]() { cb(bad); }, Qt::QueuedConnection);
         return;
     }
     request(ctx, "PUT", uploadUrl, "application/octet-stream", bytes, Auth::ServiceBearer, std::move(cb));
@@ -445,7 +471,9 @@ QString parseInviteRef(const QString& ref)
     static const QRegularExpression idPattern(QStringLiteral("^[0-9A-Za-z]{1,64}$"));
 
     QString candidate = ref.trimmed();
-    QUrl url(candidate);
+    // Accept links pasted without a scheme ("modrinth.com/share/abc"); a bare
+    // invite id never contains a slash, so this cannot misparse one.
+    QUrl url = candidate.contains('/') ? QUrl::fromUserInput(candidate) : QUrl(candidate);
     if (url.isValid() && !url.host().isEmpty()) {
         // Only trust share links that actually point at Modrinth; a link from
         // any other site must not be treated as an invite.

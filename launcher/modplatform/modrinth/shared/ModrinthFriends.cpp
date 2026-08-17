@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QUrlQuery>
 #include <QWebSocket>
 
@@ -104,7 +105,9 @@ void ModrinthFriends::resolveUsernames(const QStringList& ids)
 
 void ModrinthFriends::ensureConnected()
 {
-    if (m_connected || !ModrinthShared::isSignedIn())
+    // m_connecting keeps the 30 s retry timer from tearing down a socket that
+    // is still mid-handshake and never letting it finish.
+    if (m_connected || m_connecting || !ModrinthShared::isSignedIn())
         return;
     if (m_socket) {
         m_socket->deleteLater();
@@ -115,6 +118,11 @@ void ModrinthFriends::ensureConnected()
     connect(m_socket, &QWebSocket::connected, this, &ModrinthFriends::onSocketConnected);
     connect(m_socket, &QWebSocket::disconnected, this, &ModrinthFriends::onSocketDisconnected);
     connect(m_socket, &QWebSocket::textMessageReceived, this, &ModrinthFriends::onTextMessage);
+    connect(m_socket, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        m_connecting = false;
+        // disconnected() may not fire after a connection error; the retry
+        // timer picks it up from here.
+    });
 
     QUrl url(socketUrl());
     QUrlQuery query;
@@ -122,6 +130,7 @@ void ModrinthFriends::ensureConnected()
     url.setQuery(query);
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, APPLICATION->getUserAgent().toUtf8());
+    m_connecting = true;
     m_socket->open(request);
     m_reconnectTimer.start();
 }
@@ -129,6 +138,7 @@ void ModrinthFriends::ensureConnected()
 void ModrinthFriends::onSocketConnected()
 {
     m_connected = true;
+    m_connecting = false;
     m_pingTimer.start();
     if (!m_lastPlaying.isEmpty())
         setPlaying(m_lastPlaying);
@@ -138,6 +148,7 @@ void ModrinthFriends::onSocketConnected()
 void ModrinthFriends::onSocketDisconnected()
 {
     m_connected = false;
+    m_connecting = false;
     m_pingTimer.stop();
     m_statuses.clear();
     emit changed();
@@ -154,6 +165,7 @@ void ModrinthFriends::reset()
         m_socket = nullptr;
     }
     m_connected = false;
+    m_connecting = false;
     m_entries.clear();
     m_statuses.clear();
     emit changed();
@@ -194,27 +206,30 @@ void ModrinthFriends::onTextMessage(const QString& message)
     }
 }
 
-void ModrinthFriends::addFriend(const QString& usernameOrId, std::function<void(const QString&)> done)
+void ModrinthFriends::addFriend(QObject* ctx, const QString& usernameOrId, std::function<void(const QString&)> done)
 {
+    QPointer<QObject> guard(ctx);
     ModrinthShared::request(this, "POST", QUrl(v3Base() + "/friend/" + QString::fromUtf8(QUrl::toPercentEncoding(usernameOrId))),
                             QByteArray(), QByteArray(), ModrinthShared::Auth::Labrinth,
-                            [this, done, usernameOrId](const ModrinthShared::Response& res) {
-                                if (!res.ok) {
-                                    done(res.status == 404
+                            [this, guard, ctx, done, usernameOrId](const ModrinthShared::Response& res) {
+                                if (done && !(ctx && guard.isNull())) {
+                                    done(res.ok ? QString()
+                                         : res.status == 404
                                              ? tr("No Modrinth user named \"%1\" was found.").arg(usernameOrId)
                                              : res.error);
-                                    return;
                                 }
-                                done(QString());
-                                refresh();
+                                if (res.ok)
+                                    refresh();
                             });
 }
 
-void ModrinthFriends::removeFriend(const QString& userId, std::function<void(const QString&)> done)
+void ModrinthFriends::removeFriend(QObject* ctx, const QString& userId, std::function<void(const QString&)> done)
 {
+    QPointer<QObject> guard(ctx);
     ModrinthShared::request(this, "DELETE", QUrl(v3Base() + "/friend/" + userId), QByteArray(), QByteArray(),
-                            ModrinthShared::Auth::Labrinth, [this, done](const ModrinthShared::Response& res) {
-                                done(res.ok ? QString() : res.error);
+                            ModrinthShared::Auth::Labrinth, [this, guard, ctx, done](const ModrinthShared::Response& res) {
+                                if (done && !(ctx && guard.isNull()))
+                                    done(res.ok ? QString() : res.error);
                                 refresh();
                             });
 }

@@ -36,10 +36,12 @@ class ModrinthSharingPage : public QWidget, public BasePage {
         return pageIcon;
     }
     QString id() const override { return "sharing"; }
-    QString helpPage() const override { return "Sharing"; }
     bool apply() override { return true; }
     void retranslate() override {}
     void openedImpl() override;
+
+   protected:
+    bool event(QEvent* event) override;
 
    private slots:
     void refresh();
@@ -74,6 +76,7 @@ class ModrinthSharingPage : public QWidget, public BasePage {
     QCheckBox* m_autoPushCheck;
     QComboBox* m_configsCombo;
     QLineEdit* m_inviteLinkEdit;
+    QPushButton* m_copyLinkButton;
     QPushButton* m_newLinkButton;
     QLineEdit* m_usernameEdit;
     QPushButton* m_inviteUserButton;
@@ -87,4 +90,9 @@ class ModrinthSharingPage : public QWidget, public BasePage {
     QPushButton* m_syncButton;
     QPushButton* m_changesButton;
     QPushButton* m_leaveButton;
+
+    // The "unpushed changes" hint walks the whole config tree; cache it so
+    // refresh() stays cheap when it runs several times in a row.
+    qint64 m_fingerprintCheckedAtMs = 0;
+    bool m_fingerprintDirty = false;
 };

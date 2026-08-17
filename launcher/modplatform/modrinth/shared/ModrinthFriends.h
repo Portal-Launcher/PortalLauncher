@@ -41,8 +41,10 @@ class ModrinthFriends : public QObject {
     /** Drop the socket and cached data (used on sign-out). */
     void reset();
 
-    void addFriend(const QString& usernameOrId, std::function<void(const QString& error)> done);
-    void removeFriend(const QString& userId, std::function<void(const QString& error)> done);
+    /** ctx guards the callback: if it is destroyed before the reply lands,
+     *  done is never invoked (the refresh still happens). */
+    void addFriend(QObject* ctx, const QString& usernameOrId, std::function<void(const QString& error)> done);
+    void removeFriend(QObject* ctx, const QString& userId, std::function<void(const QString& error)> done);
 
     /** Tell friends what we are playing; empty means idle. */
     void setPlaying(const QString& instanceName);
@@ -69,6 +71,7 @@ class ModrinthFriends : public QObject {
 
     QWebSocket* m_socket = nullptr;
     bool m_connected = false;
+    bool m_connecting = false;
     QTimer m_pingTimer;
     QTimer m_reconnectTimer;
 

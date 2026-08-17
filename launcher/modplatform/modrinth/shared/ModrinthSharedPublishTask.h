@@ -71,6 +71,8 @@ class ModrinthSharedPublishTask : public Task {
     QString m_gameVersion;
     QString m_loader;
     QString m_loaderVersion;
+    QString m_environment;  // gameVersion/loader/loaderVersion|configSpec
+    QString m_signature;    // full content signature, computed once per run
 
     QJsonArray m_uploads;  // external_files from the createVersion response
     int m_uploadIndex = 0;
