@@ -607,11 +607,21 @@ void PrismUpdaterApp::printReleases()
     }
 }
 
+// Portal releases are tagged with plain dotted versions like 1.0.1. The repo
+// also carries the legacy "11.0.3-shared" release from before the fork got its
+// own versioning; its tag would win every version comparison forever, so only
+// purely numeric tags count as update candidates.
+static bool isUpdateCandidateTag(const QString& tag)
+{
+    static const QRegularExpression s_plainVersion("^v?\\d+(\\.\\d+)*$");
+    return s_plainVersion.match(tag).hasMatch();
+}
+
 QList<GitHubRelease> PrismUpdaterApp::nonDraftReleases()
 {
     QList<GitHubRelease> nonDraft;
     for (auto rls : m_releases) {
-        if (rls.isValid() && !rls.draft)
+        if (rls.isValid() && !rls.draft && isUpdateCandidateTag(rls.tag_name))
             nonDraft.append(rls);
     }
     return nonDraft;
@@ -1273,6 +1283,8 @@ GitHubRelease PrismUpdaterApp::getLatestRelease()
         if (release.draft)
             continue;
         if (release.prerelease && !m_allowPreRelease)
+            continue;
+        if (!isUpdateCandidateTag(release.tag_name))
             continue;
         if (!latest.isValid() || (release.version > latest.version)) {
             latest = release;
