@@ -31,6 +31,7 @@
 
 #include <QAccessible>
 #include <QCommandLineParser>
+#include <QCryptographicHash>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QNetworkProxy>
@@ -663,6 +664,10 @@ QList<GitHubReleaseAsset> PrismUpdaterApp::validReleaseArtifacts(const GitHubRel
             qDebug() << "Rejecting zsync file" << asset.name;
             continue;
         }
+        if (asset.name.endsWith(".sha256") || asset.name.endsWith(".minisig") || asset.name.endsWith(".sig")) {
+            qDebug() << "Rejecting checksum/signature file" << asset.name;
+            continue;
+        }
         if (!m_isAppimage && asset.name.toLower().endsWith("appimage")) {
             qDebug() << "Rejecting" << asset.name << "because it is an AppImage";
             continue;
@@ -754,7 +759,56 @@ void PrismUpdaterApp::performUpdate(const GitHubRelease& release)
         return showFatalErrorMessage(tr("Failed to Download"), tr("Failed to download the selected asset."));
     }
 
+    if (!verifyAssetChecksum(release, selected_asset, file))
+        return;  // a fatal error message is already up
+
     performInstall(file);
+}
+
+bool PrismUpdaterApp::verifyAssetChecksum(const GitHubRelease& release, const GitHubReleaseAsset& asset, const QFileInfo& file)
+{
+    // Releases may publish a "<asset>.sha256" next to each artifact; when one
+    // exists the downloaded file has to match it before anything is installed.
+    GitHubReleaseAsset checksum_asset;
+    for (const auto& candidate : release.assets) {
+        if (candidate.name.compare(asset.name + ".sha256", Qt::CaseInsensitive) == 0) {
+            checksum_asset = candidate;
+            break;
+        }
+    }
+    if (!checksum_asset.isValid()) {
+        logUpdate(tr("Release has no %1 asset; skipping checksum verification.").arg(asset.name + ".sha256"));
+        return true;
+    }
+
+    auto checksum_file = downloadAsset(checksum_asset);
+    if (!checksum_file.exists()) {
+        showFatalErrorMessage(tr("Failed to Download"), tr("Failed to download the release checksum file."));
+        return false;
+    }
+    // Accept both bare-hash files and the "hash  filename" sha256sum format.
+    const QString expected = QString::fromUtf8(FS::read(checksum_file.absoluteFilePath())).trimmed().section(' ', 0, 0).toLower();
+
+    QFile payload(file.absoluteFilePath());
+    if (!payload.open(QIODevice::ReadOnly)) {
+        showFatalErrorMessage(tr("Update Failed"), tr("Could not open the downloaded update for verification."));
+        return false;
+    }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    hash.addData(&payload);
+    const QString actual = QString::fromLatin1(hash.result().toHex()).toLower();
+
+    if (expected.isEmpty() || actual != expected) {
+        showFatalErrorMessage(tr("Update Rejected"),
+                              tr("The downloaded update does not match the checksum published with the release.\n\n"
+                                 "Expected: %1\n"
+                                 "Got: %2\n\n"
+                                 "Nothing was installed. This can mean a corrupted download or a tampered release.")
+                                  .arg(expected, actual));
+        return false;
+    }
+    logUpdate(tr("Checksum verified for %1.").arg(asset.name));
+    return true;
 }
 
 QFileInfo PrismUpdaterApp::downloadAsset(const GitHubReleaseAsset& asset)

@@ -83,6 +83,7 @@ class PrismUpdaterApp : public QApplication {
     std::optional<QDir> unpackArchive(QFileInfo file);
 
     QFileInfo downloadAsset(const GitHubReleaseAsset& asset);
+    bool verifyAssetChecksum(const GitHubRelease& release, const GitHubReleaseAsset& asset, const QFileInfo& file);
     bool callAppImageUpdate();
 
     void moveAndFinishUpdate(QDir target);
