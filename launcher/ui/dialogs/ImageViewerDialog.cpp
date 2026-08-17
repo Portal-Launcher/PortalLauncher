@@ -158,7 +158,16 @@ void ImageViewport::paintEvent(QPaintEvent* event)
     }
 
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    painter.drawImage(imageRect(), m_image);
+    // Draw only the visible part of the image: scaling the whole frame on
+    // every pan/zoom repaint makes dragging large screenshots choppy.
+    const QRectF target = imageRect();
+    const QRectF visibleTarget = target.intersected(QRectF(rect()));
+    if (visibleTarget.isEmpty())
+        return;
+    const qreal scale = currentScale();
+    const QRectF sourceRect((visibleTarget.left() - target.left()) / scale, (visibleTarget.top() - target.top()) / scale,
+                            visibleTarget.width() / scale, visibleTarget.height() / scale);
+    painter.drawImage(visibleTarget, m_image, sourceRect);
 }
 
 void ImageViewport::wheelEvent(QWheelEvent* event)
@@ -335,8 +344,13 @@ ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::Gallery
 
 void ImageViewerDialog::preloadAll()
 {
-    // Fetch every gallery image up front (cache-backed), decoding as each
-    // arrives, so previous/next never waits on the network.
+    // Fetch every gallery image up front (cache-backed) in ONE job, so the
+    // concurrent-downloads setting applies instead of everything at once.
+    // Images are only decoded near the current index; a full gallery of
+    // decoded 4K frames is easily hundreds of megabytes.
+    auto* job = new NetJob(QStringLiteral("Preload gallery images"), APPLICATION->network());
+    job->setAskRetry(false);
+    bool queuedAny = false;
     for (int i = 0; i < m_images.size(); i++) {
         const QUrl url(m_images[i].url);
         if (url.isEmpty()) {
@@ -348,30 +362,49 @@ void ImageViewerDialog::preloadAll()
             m_metaEntry,
             QString("images/%1").arg(QString(QCryptographicHash::hash(url.toEncoded(), QCryptographicHash::Algorithm::Sha1).toHex())));
 
-        auto* job = new NetJob(QString("Preload gallery image %1").arg(i + 1), APPLICATION->network());
-        job->setAskRetry(false);
-        job->addNetAction(Net::ApiDownload::makeCached(url, entry));
-
-        auto fullPath = entry->getFullPath();
-        connect(job, &NetJob::succeeded, this, [this, i, fullPath] {
-            QImage image(fullPath);
-            if (image.isNull()) {
-                m_failed[i] = true;
-            } else {
-                m_loaded[i] = image;
-            }
-            if (i == m_index) {
+        auto action = Net::ApiDownload::makeCached(url, entry);
+        const QString fullPath = entry->getFullPath();
+        connect(action.get(), &Task::succeeded, this, [this, i, fullPath] {
+            m_cachedPaths[i] = fullPath;
+            if (qAbs(i - m_index) <= EVICT_WINDOW)
+                decodeIfNeeded(i);
+            if (i == m_index)
                 showImage(m_index);
-            }
         });
-        connect(job, &NetJob::failed, this, [this, i](const QString&) {
+        connect(action.get(), &Task::failed, this, [this, i](const QString&) {
             m_failed[i] = true;
-            if (i == m_index) {
+            if (i == m_index)
                 showImage(m_index);
-            }
         });
-        connect(job, &NetJob::finished, job, &NetJob::deleteLater);
+        job->addNetAction(action);
+        queuedAny = true;
+    }
+    connect(job, &NetJob::finished, job, &NetJob::deleteLater);
+    if (queuedAny)
         job->start();
+    else
+        job->deleteLater();
+}
+
+void ImageViewerDialog::decodeIfNeeded(int index)
+{
+    if (m_loaded.contains(index) || m_failed.value(index, false) || !m_cachedPaths.contains(index))
+        return;
+    QImage image(m_cachedPaths.value(index));
+    if (image.isNull())
+        m_failed[index] = true;
+    else
+        m_loaded[index] = image;
+}
+
+void ImageViewerDialog::evictFarImages()
+{
+    // Anything outside the window re-decodes from the disk cache on demand.
+    for (auto it = m_loaded.begin(); it != m_loaded.end();) {
+        if (qAbs(it.key() - m_index) > EVICT_WINDOW && m_cachedPaths.contains(it.key()))
+            it = m_loaded.erase(it);
+        else
+            ++it;
     }
 }
 
@@ -382,6 +415,8 @@ void ImageViewerDialog::showImage(int index)
     }
 
     m_index = index;
+    decodeIfNeeded(m_index);
+    evictFarImages();
 
     if (m_loaded.contains(m_index)) {
         m_viewport->setImage(m_loaded.value(m_index));

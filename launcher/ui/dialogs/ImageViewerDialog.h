@@ -86,16 +86,22 @@ class ImageViewerDialog final : public QDialog {
 
    private:
     void preloadAll();
+    void decodeIfNeeded(int index);
+    void evictFarImages();
     void showImage(int index);
     void layoutOverlays();
     void updateOverlays();
+
+    /** How far around the current index decoded frames are kept in memory. */
+    static constexpr int EVICT_WINDOW = 2;
 
     QList<ModPlatform::GalleryImage> m_images;
     int m_index = 0;
     QString m_metaEntry;
 
-    QHash<int, QImage> m_loaded;   // decoded full images by gallery index
-    QHash<int, bool> m_failed;     // indices whose download or decode failed
+    QHash<int, QImage> m_loaded;        // decoded images near the current index
+    QHash<int, QString> m_cachedPaths;  // downloaded cache file per gallery index
+    QHash<int, bool> m_failed;          // indices whose download or decode failed
 
     ImageViewport* m_viewport;
     QToolButton* m_prevButton;
