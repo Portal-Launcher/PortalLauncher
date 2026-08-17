@@ -26,9 +26,54 @@
 class QLabel;
 class QToolButton;
 
-/** A lightbox for project gallery images: full-size image, caption, and
- *  previous / next navigation. All images preload in the background when the
- *  dialog opens, so navigation is instant once they have arrived. */
+/** The image surface of the gallery lightbox: fills its whole area, supports
+ *  wheel zoom toward the cursor, drag panning, and double-click to toggle
+ *  between fit and 100%. */
+class ImageViewport final : public QWidget {
+    Q_OBJECT
+
+   public:
+    explicit ImageViewport(QWidget* parent = nullptr);
+
+    void setImage(const QImage& image);
+    void setPlaceholderText(const QString& text);
+
+    /** Scale-to-fit (never upscaling past 100%). */
+    void zoomToFit();
+    void zoomTo(qreal zoom, const QPointF& anchor);
+    qreal currentScale() const;
+    bool isFit() const { return m_fit; }
+
+   signals:
+    void zoomChanged();
+
+   protected:
+    void paintEvent(QPaintEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+
+   private:
+    qreal fitScale() const;
+    QRectF imageRect() const;
+    void clampPan();
+    void updateCursorShape();
+
+    QImage m_image;
+    QString m_placeholder;
+    bool m_fit = true;
+    qreal m_zoom = 1.0;
+    QPointF m_pan;  // offset of the image center from the viewport center
+    bool m_panning = false;
+    QPointF m_lastDragPos;
+};
+
+/** A lightbox for project gallery images: the image fills the dialog, with
+ *  navigation arrows, counter, close button, and caption overlaid on top.
+ *  All images preload in the background when the dialog opens. */
 class ImageViewerDialog final : public QDialog {
     Q_OBJECT
 
@@ -42,10 +87,9 @@ class ImageViewerDialog final : public QDialog {
    private:
     void preloadAll();
     void showImage(int index);
-    void updatePixmap();
-    void updateNavState();
+    void layoutOverlays();
+    void updateOverlays();
 
-   private:
     QList<ModPlatform::GalleryImage> m_images;
     int m_index = 0;
     QString m_metaEntry;
@@ -53,10 +97,13 @@ class ImageViewerDialog final : public QDialog {
     QHash<int, QImage> m_loaded;   // decoded full images by gallery index
     QHash<int, bool> m_failed;     // indices whose download or decode failed
 
-    QLabel* m_imageLabel;
-    QLabel* m_titleLabel;
-    QLabel* m_descriptionLabel;
-    QLabel* m_counterLabel;
+    ImageViewport* m_viewport;
     QToolButton* m_prevButton;
     QToolButton* m_nextButton;
+    QToolButton* m_closeButton;
+    QLabel* m_counterLabel;
+    QLabel* m_zoomLabel;
+    QWidget* m_captionBox;
+    QLabel* m_titleLabel;
+    QLabel* m_descriptionLabel;
 };
