@@ -12,12 +12,14 @@
 #include <QVBoxLayout>
 
 #include "BaseInstance.h"
+#include "minecraft/MinecraftInstance.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
 #include "ui/dialogs/ModrinthInviteFriendDialog.h"
+#include "ui/dialogs/ModrinthOptionalModsDialog.h"
 #include "ui/dialogs/ProgressDialog.h"
 
 ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : QWidget(parent), m_instance(inst)
@@ -72,6 +74,14 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
         m_configsCombo->addItem(tr("Don't share config files"), QString());
         m_configsCombo->addItem(tr("Share all config files"), QStringLiteral("all"));
         box->addWidget(m_configsCombo);
+
+        m_optionalModsButton = new QPushButton(tr("Optional mods…"), m_ownerBox);
+        m_optionalModsButton->setToolTip(
+            tr("Pick mods that members may disable; updates then keep their choice instead of re-enabling them."));
+        auto* optionalRow = new QHBoxLayout();
+        optionalRow->addWidget(m_optionalModsButton);
+        optionalRow->addStretch(1);
+        box->addLayout(optionalRow);
 
         auto* linkRow = new QHBoxLayout();
         m_inviteLinkEdit = new QLineEdit(m_ownerBox);
@@ -132,6 +142,12 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
     connect(m_signInButton, &QPushButton::clicked, this, &ModrinthSharingPage::signInOrOut);
     connect(m_shareButton, &QPushButton::clicked, this, &ModrinthSharingPage::shareInstance);
     connect(m_pushButton, &QPushButton::clicked, this, &ModrinthSharingPage::pushUpdate);
+    connect(m_optionalModsButton, &QPushButton::clicked, this, [this]() {
+        if (auto* minecraftInstance = dynamic_cast<MinecraftInstance*>(m_instance)) {
+            ModrinthOptionalModsDialog dialog(minecraftInstance, this);
+            dialog.exec();
+        }
+    });
     connect(m_copyLinkButton, &QPushButton::clicked, this, [this]() {
         if (m_inviteLinkEdit->text().isEmpty())
             return;
@@ -252,9 +268,16 @@ void ModrinthSharingPage::refresh()
             loadMembers();
     } else if (member) {
         m_stateLabel->setText(tr("<b>This is a shared pack you joined.</b>"));
-        m_memberInfoLabel->setText(tr("Applied version: %1. The pack checks for the owner's updates every time you "
-                                      "press Play - including mods, shared configs, and the pack icon.")
-                                       .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion)));
+        QString info = tr("Applied version: %1. The pack checks for the owner's updates every time you "
+                          "press Play - including mods, shared configs, and the pack icon.")
+                           .arg(attachment->appliedVersion < 0 ? tr("none yet") : QString::number(attachment->appliedVersion));
+        const int optionalCount = attachment->optionalProjects.size() + attachment->optionalFiles.size();
+        if (optionalCount > 0) {
+            info += ' ' + tr("The owner marked %n mod(s) as optional: disable them on the Mods page and updates "
+                             "will keep your choice.",
+                             nullptr, optionalCount);
+        }
+        m_memberInfoLabel->setText(info);
         m_syncButton->setEnabled(signedIn);
     }
 }

@@ -11,6 +11,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QTemporaryDir>
 
 #include "ModrinthSharedAttachment.h"
@@ -42,11 +43,15 @@ class ModrinthSharedSyncTask : public Task {
         QString sha1;  // empty for external files
         qint64 size = -1;
         QString source;
+        QString fileName;
+        QString projectId;    // Modrinth-hosted files only
+        QString optionalKey;  // non-empty when the owner marked this optional
     };
 
     void onLatestVersion(const QJsonObject& version);
     void resolveNextVersionChunk();
     void resolveProjects();
+    void fetchShareMeta();
     void buildTargetsAndDownload();
     void afterDownloads();
     void applyConfigBundle(std::function<void()> next);
@@ -68,6 +73,9 @@ class ModrinthSharedSyncTask : public Task {
 
     QList<TargetFile> m_targets;
     QString m_configBundleUrl;
+    QString m_shareMetaUrl;
+    QSet<QString> m_optionalProjects;
+    QSet<QString> m_optionalFiles;
     QStringList m_changeLog;
     QTemporaryDir m_tempDir;
 

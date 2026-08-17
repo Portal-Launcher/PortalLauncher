@@ -52,6 +52,11 @@ QString hashFileSha1(const QString& path)
 
 }  // namespace
 
+// Carries fork-specific share metadata (currently the optional-mods lists) as
+// a plain external file. Stock clients download it inert; our sync intercepts
+// it by name and never writes it to disk.
+const char* ModrinthShared::SHARE_META_FILE_NAME = "portal-share-meta.json";
+
 ModrinthSharedPublishTask::ModrinthSharedPublishTask(BaseInstance* instance, bool force, std::optional<QString> configSpecOverride)
     : Task(), m_force(force), m_configSpecOverride(std::move(configSpecOverride))
 {
@@ -114,7 +119,9 @@ void ModrinthSharedPublishTask::executeTask()
     // instant for large packs.
     const QString configSpec = m_attachment.configSpec;
     const bool configsShared = !configSpec.isEmpty() && configSpec != QLatin1String("none");
-    m_environment = m_gameVersion + '/' + m_loader + '/' + m_loaderVersion + '|' + configSpec;
+    // The optional-mods fingerprint busts the fast path when only optionality
+    // changed, so a push still happens even though no file content did.
+    m_environment = m_gameVersion + '/' + m_loader + '/' + m_loaderVersion + '|' + configSpec + '|' + optionalListsFingerprint();
     if (!m_force && m_hasAttachment && m_attachment.appliedVersion >= 0 && !m_attachment.quickFingerprint.isEmpty() &&
         m_environment == m_attachment.lastPushEnvironment &&
         ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), configsShared) == m_attachment.quickFingerprint) {
@@ -159,6 +166,8 @@ void ModrinthSharedPublishTask::scanContent()
                 m_skippedDisabled++;
                 continue;
             }
+            if (name == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
+                continue;
             if (!name.endsWith(folderType.extension, Qt::CaseInsensitive))
                 continue;
             ContentFile file;
@@ -316,6 +325,12 @@ void ModrinthSharedPublishTask::createRemoteVersion()
         obj["file_type"] = "configs";
         externalData.append(obj);
     }
+    if (!m_attachment.optionalProjects.isEmpty() || !m_attachment.optionalFiles.isEmpty()) {
+        QJsonObject obj;
+        obj["file_name"] = ModrinthShared::SHARE_META_FILE_NAME;
+        obj["file_type"] = "mod";
+        externalData.append(obj);
+    }
 
     QJsonObject payload;
     payload["modrinth_ids"] = QJsonArray::fromStringList(m_modrinthIds);
@@ -389,6 +404,13 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
         m_activeUploads++;
         setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
         ModrinthShared::uploadBytes(this, url, bytes, onDone);
+        return;
+    }
+
+    if (fileName == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME)) {
+        m_activeUploads++;
+        setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
+        ModrinthShared::uploadBytes(this, url, buildShareMetaBytes(), onDone);
         return;
     }
 
@@ -486,8 +508,32 @@ QString ModrinthSharedPublishTask::computeSignature() const
     configs.sort();
     parts << "cfg:" + configs.join(',');
     parts << "env:" + m_gameVersion + '/' + m_loader + '/' + m_loaderVersion;
+    parts << "opt:" + optionalListsFingerprint();
     return QString::fromLatin1(
         QCryptographicHash::hash(parts.join('\n').toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QString ModrinthSharedPublishTask::optionalListsFingerprint() const
+{
+    QStringList projects = m_attachment.optionalProjects;
+    QStringList files = m_attachment.optionalFiles;
+    projects.sort();
+    files.sort();
+    if (projects.isEmpty() && files.isEmpty())
+        return {};
+    return QString::fromLatin1(
+        QCryptographicHash::hash((projects.join(',') + '|' + files.join(',')).toUtf8(), QCryptographicHash::Sha1).toHex());
+}
+
+QByteArray ModrinthSharedPublishTask::buildShareMetaBytes() const
+{
+    QJsonObject optional;
+    optional["projects"] = QJsonArray::fromStringList(m_attachment.optionalProjects);
+    optional["files"] = QJsonArray::fromStringList(m_attachment.optionalFiles);
+    QJsonObject root;
+    root["format"] = 1;
+    root["optional"] = optional;
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
 QByteArray ModrinthSharedPublishTask::buildConfigBundle()

@@ -507,6 +507,9 @@ set(API_SOURCES
     modplatform/PackUpdateChecker.h
     modplatform/PackUpdateChecker.cpp
 
+    modplatform/ManagedPackUpdateTask.h
+    modplatform/ManagedPackUpdateTask.cpp
+
     modplatform/flame/FlameAPI.h
     modplatform/flame/FlameAPI.cpp
     modplatform/modrinth/ModrinthAPI.h
@@ -1130,6 +1133,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/ResourceUpdateDialog.h
     ui/dialogs/ModCleanupDialog.cpp
     ui/dialogs/ModCleanupDialog.h
+    ui/dialogs/ModrinthOptionalModsDialog.cpp
+    ui/dialogs/ModrinthOptionalModsDialog.h
     ui/dialogs/InstallLoaderDialog.cpp
     ui/dialogs/InstallLoaderDialog.h
     ui/dialogs/ChooseOfflineNameDialog.cpp

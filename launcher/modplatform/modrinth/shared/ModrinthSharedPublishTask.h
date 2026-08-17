@@ -53,6 +53,8 @@ class ModrinthSharedPublishTask : public Task {
 
     QString computeSignature() const;
     QByteArray buildConfigBundle();
+    QByteArray buildShareMetaBytes() const;
+    QString optionalListsFingerprint() const;
 
     MinecraftInstance* m_instance = nullptr;
     bool m_force = false;

@@ -181,6 +181,35 @@ void ModrinthSharedSyncTask::resolveProjects()
             return;
         }
         m_resolvedProjects = res.json.array();
+        fetchShareMeta();
+    });
+}
+
+void ModrinthSharedSyncTask::fetchShareMeta()
+{
+    // Fork clients attach an extra metadata file to the share (optional-mods
+    // lists). Absent or unreadable metadata just means "everything required".
+    m_shareMetaUrl.clear();
+    m_optionalProjects.clear();
+    m_optionalFiles.clear();
+    for (const auto& value : m_remoteVersion.value("external_files").toArray()) {
+        const auto ext = value.toObject();
+        if (ext.value("file_name").toString() == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
+            m_shareMetaUrl = ext.value("url").toString();
+    }
+    if (m_shareMetaUrl.isEmpty() || !isTrustedDownloadUrl(QUrl(m_shareMetaUrl))) {
+        buildTargetsAndDownload();
+        return;
+    }
+    ModrinthShared::fetchBytes(this, QUrl(m_shareMetaUrl), [this](const ModrinthShared::Response& res) {
+        if (res.ok && !res.body.isEmpty()) {
+            const auto root = QJsonDocument::fromJson(res.body).object();
+            const auto optional = root.value("optional").toObject();
+            for (const auto& value : optional.value("projects").toArray())
+                m_optionalProjects.insert(value.toString());
+            for (const auto& value : optional.value("files").toArray())
+                m_optionalFiles.insert(value.toString());
+        }
         buildTargetsAndDownload();
     });
 }
@@ -242,6 +271,12 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         target.sha1 = file.value("hashes").toObject().value("sha1").toString();
         target.size = static_cast<qint64>(file.value("size").toDouble(-1));
         target.source = "modrinth:" + version.value("id").toString();
+        target.fileName = fileName;
+        target.projectId = version.value("project_id").toString();
+        if (m_optionalProjects.contains(target.projectId))
+            target.optionalKey = target.projectId;
+        else if (m_optionalFiles.contains(fileName))
+            target.optionalKey = fileName;
         m_targets.append(target);
     }
 
@@ -254,6 +289,8 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
             m_configBundleUrl = ext.value("url").toString();
             continue;
         }
+        if (fileName == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
+            continue;  // fork metadata, consumed in fetchShareMeta, never written to disk
         if (!isSafeFileName(fileName))
             continue;
         TargetFile target;
@@ -261,6 +298,9 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         target.url = ext.value("url").toString();
         target.size = static_cast<qint64>(ext.value("file_size").toDouble(-1));
         target.source = "external";
+        target.fileName = fileName;
+        if (m_optionalFiles.contains(fileName))
+            target.optionalKey = fileName;
         m_targets.append(target);
     }
 
@@ -303,6 +343,26 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
     QHash<QString, ModrinthShared::ManagedFile> oldByRel;
     for (const auto& old : m_attachment.managedFiles)
         oldByRel[old.rel] = old;
+
+    // Reconcile this user's optional-mod choices from what is on disk: a
+    // .disabled marker on an optional mod means "keep this off", re-enabling
+    // it means "give me updates again". Tracked by key (project id or file
+    // name) so the choice survives file renames across versions.
+    QSet<QString> disabledOptional(m_attachment.disabledOptional.begin(), m_attachment.disabledOptional.end());
+    for (const auto& old : m_attachment.managedFiles) {
+        if (old.optionalKey.isEmpty())
+            continue;
+        if (QFile::exists(FS::PathCombine(gameRoot, old.rel)))
+            disabledOptional.remove(old.optionalKey);
+        else if (QFile::exists(FS::PathCombine(gameRoot, old.rel + ".disabled")))
+            disabledOptional.insert(old.optionalKey);
+    }
+    // Only keys the share still marks optional are honored.
+    QSet<QString> validKeys = m_optionalProjects;
+    validKeys.unite(m_optionalFiles);
+    disabledOptional.intersect(validKeys);
+    m_attachment.disabledOptional = QStringList(disabledOptional.begin(), disabledOptional.end());
+    m_attachment.disabledOptional.sort();
 
     m_changeLog.clear();
     const bool firstInstall = m_attachment.appliedVersion < 0;
@@ -366,6 +426,7 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         const QString absDisabled = abs + ".disabled";
         const bool haveOld = oldByRel.contains(target.rel);
         const auto old = oldByRel.value(target.rel);
+        const bool keepDisabled = !target.optionalKey.isEmpty() && disabledOptional.contains(target.optionalKey);
 
         bool exists = QFile::exists(abs);
         bool existsDisabled = !exists && QFile::exists(absDisabled);
@@ -378,7 +439,9 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
                 QFile::remove(absDisabled);
         }
 
-        auto download = Net::Download::makeFile(QUrl(target.url), abs);
+        // Updates to an optional mod this user turned off land as .disabled,
+        // so the mod stays off without falling behind the pack.
+        auto download = Net::Download::makeFile(QUrl(target.url), keepDisabled ? absDisabled : abs);
         if (!target.sha1.isEmpty())
             download->addValidator(new Net::ChecksumValidator(QCryptographicHash::Sha1, target.sha1));
         m_downloadJob->addNetAction(download);
@@ -480,8 +543,15 @@ void ModrinthSharedSyncTask::finish()
         mf.sha1 = target.sha1;
         mf.size = target.size;
         mf.source = target.source;
+        mf.optionalKey = target.optionalKey;
         m_attachment.managedFiles.append(mf);
     }
+
+    // Mirror the owner's optional lists so the Sharing page can describe them.
+    m_attachment.optionalProjects = QStringList(m_optionalProjects.begin(), m_optionalProjects.end());
+    m_attachment.optionalFiles = QStringList(m_optionalFiles.begin(), m_optionalFiles.end());
+    m_attachment.optionalProjects.sort();
+    m_attachment.optionalFiles.sort();
 
     // Update Minecraft / loader versions if the owner changed them.
     const QString gameVersion = m_remoteVersion.value("game_version").toString();

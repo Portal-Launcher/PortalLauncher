@@ -18,7 +18,8 @@ struct ManagedFile {
     QString rel;     // path relative to the game root, forward slashes
     QString sha1;    // may be empty for external files
     qint64 size = -1;
-    QString source;  // "modrinth:<versionId>" or "external"
+    QString source;       // "modrinth:<versionId>" or "external"
+    QString optionalKey;  // non-empty when the owner marked this optional (project id or file name)
 };
 
 class Attachment {
@@ -38,6 +39,13 @@ class Attachment {
     QString lastInviteLink;     // owner only: the invite link minted most recently
     QList<ManagedFile> managedFiles;
     QStringList managedConfigs;
+    // Optional mods: the owner picks which mods guests may keep disabled. Keys
+    // are Modrinth project ids (optionalProjects) or plain file names
+    // (optionalFiles). Owners edit these; members mirror them from the share.
+    QStringList optionalProjects;
+    QStringList optionalFiles;
+    // Member only: optional keys this user has turned off; sync keeps them off.
+    QStringList disabledOptional;
 
     bool isOwner() const { return role == QLatin1String("owner"); }
     bool isMember() const { return role == QLatin1String("member"); }

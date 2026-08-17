@@ -56,11 +56,18 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
         mf.sha1 = fileObj.value("sha1").toString();
         mf.size = static_cast<qint64>(fileObj.value("size").toDouble(-1));
         mf.source = fileObj.value("source").toString();
+        mf.optionalKey = fileObj.value("optionalKey").toString();
         if (!mf.rel.isEmpty())
             att.managedFiles.append(mf);
     }
     for (const auto& value : obj.value("managedConfigs").toArray())
         att.managedConfigs.append(value.toString());
+    for (const auto& value : obj.value("optionalProjects").toArray())
+        att.optionalProjects.append(value.toString());
+    for (const auto& value : obj.value("optionalFiles").toArray())
+        att.optionalFiles.append(value.toString());
+    for (const auto& value : obj.value("disabledOptional").toArray())
+        att.disabledOptional.append(value.toString());
 
     // The id ends up in service URL paths and in an icon filename, so a
     // malformed one (from a hand-edited or malicious file) must never load.
@@ -93,10 +100,15 @@ bool Attachment::save(const QString& instanceRoot) const
         fileObj["sha1"] = mf.sha1;
         fileObj["size"] = static_cast<double>(mf.size);
         fileObj["source"] = mf.source;
+        if (!mf.optionalKey.isEmpty())
+            fileObj["optionalKey"] = mf.optionalKey;
         files.append(fileObj);
     }
     obj["managedFiles"] = files;
     obj["managedConfigs"] = QJsonArray::fromStringList(managedConfigs);
+    obj["optionalProjects"] = QJsonArray::fromStringList(optionalProjects);
+    obj["optionalFiles"] = QJsonArray::fromStringList(optionalFiles);
+    obj["disabledOptional"] = QJsonArray::fromStringList(disabledOptional);
 
     try {
         FS::write(filePath(instanceRoot), QJsonDocument(obj).toJson(QJsonDocument::Indented));

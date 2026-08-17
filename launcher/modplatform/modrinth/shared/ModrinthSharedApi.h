@@ -22,6 +22,9 @@ namespace ModrinthShared {
 QString serviceBaseUrl();  // https://shared-instances.modrinth.com/v1
 QString siteUrl();         // https://modrinth.com
 
+// File name of the fork's share-metadata external file (optional-mods lists).
+extern const char* SHARE_META_FILE_NAME;
+
 struct Response {
     bool ok = false;
     int status = 0;
