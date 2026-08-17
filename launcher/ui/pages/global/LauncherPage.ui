@@ -255,7 +255,7 @@
              <string>&amp;Auto Java Download:</string>
             </property>
             <property name="toolTip">
-             <string>Folder where Prism Launcher stores automatically downloaded Java versions. Do NOT set this to your system Java installation.</string>
+             <string>Folder where the launcher stores automatically downloaded Java versions. Do NOT set this to your system Java installation.</string>
             </property>
             <property name="buddy">
              <cstring>javaDirTextBox</cstring>

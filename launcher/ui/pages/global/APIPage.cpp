@@ -65,6 +65,11 @@ APIPage::APIPage(QWidget* parent) : QWidget(parent), ui(new Ui::APIPage)
 
     ui->setupUi(this);
 
+    // The Modrinth field can hold a full account session token (set by the
+    // shared-instances sign-in), not just a low-value PAT; never show it in
+    // plain text on a settings screen.
+    ui->modrinthToken->setEchoMode(QLineEdit::Password);
+
     for (auto pasteType : comboBoxEntries) {
         ui->pasteTypeComboBox->addItem(PasteUpload::PasteTypes.at(pasteType).name, pasteType);
     }

@@ -171,9 +171,11 @@ endif()
 ##################################### Set Application options #####################################
 
 ######## Set URLs ########
-set(Launcher_NEWS_RSS_URL "https://prismlauncher.org/feed/feed.xml" CACHE STRING "URL to fetch Prism Launcher's news RSS feed from.")
-set(Launcher_NEWS_OPEN_URL "https://prismlauncher.org/news" CACHE STRING "URL that gets opened when the user clicks 'More News'")
-set(Launcher_WIKI_URL "https://prismlauncher.org/wiki/" CACHE STRING "URL that gets opened when the user clicks 'Launcher Help'")
+# No news feed: an empty URL hides the news toolbar entirely (Portal has no
+# blog, and showing upstream Prism's feed here was just confusing).
+set(Launcher_NEWS_RSS_URL "" CACHE STRING "URL to fetch the launcher's news RSS feed from." FORCE)
+set(Launcher_NEWS_OPEN_URL "https://github.com/TinsleyDevers/PortalLauncher/releases" CACHE STRING "URL that gets opened when the user clicks 'More News'" FORCE)
+set(Launcher_WIKI_URL "https://github.com/TinsleyDevers/PortalLauncher#readme" CACHE STRING "URL that gets opened when the user clicks 'Launcher Help'" FORCE)
 set(Launcher_HELP_URL "https://prismlauncher.org/wiki/help-pages/%1" CACHE STRING "URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help in a dialog window")
 set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CACHE STRING "URL that gets opened when the user successfully logins.")
 set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for legacy (<=1.5.2) FML Libraries.")
