@@ -252,7 +252,8 @@ bool BaseInstance::isLinkedToInstanceId(const QString& id) const
 
 void BaseInstance::iconUpdated(QString key)
 {
-    if (iconKey() == key) {
+    // An empty key is a broadcast: anything may have changed.
+    if (key.isEmpty() || iconKey() == key) {
         emit propertiesChanged(this);
     }
 }

@@ -297,6 +297,24 @@ void HttpMetaCache::SaveNow()
 
     qCDebug(taskHttpMetaCacheLogC) << "Saving metacache with" << m_entries.size() << "entries";
 
+    // Prune old gallery images: browsing mods adds a cache entry per viewed
+    // image and nothing else ever removes them, so the index would grow
+    // without bound (and it is parsed on the GUI thread at startup).
+    const qint64 cutoffMs = QDateTime::currentMSecsSinceEpoch() - 30LL * 24 * 3600 * 1000;
+    for (auto& group : m_entries) {
+        auto& list = group.entry_list;
+        for (auto it = list.begin(); it != list.end();) {
+            const auto& entry = it.value();
+            if (entry->m_relativePath.startsWith(QLatin1String("images/")) && !entry->m_stale &&
+                entry->m_local_changed_timestamp > 0 && entry->m_local_changed_timestamp < cutoffMs) {
+                FS::deletePath(FS::PathCombine(group.base_path, entry->m_relativePath));
+                it = list.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     QJsonObject toplevel;
     Json::writeString(toplevel, "version", "1");
 

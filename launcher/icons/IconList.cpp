@@ -444,8 +444,11 @@ void IconList::reindex()
     m_nameIndex.clear();
     for (int i = 0; i < m_icons.size(); i++) {
         m_nameIndex[m_icons[i].m_key] = i;
-        emit iconUpdated(m_icons[i].m_key);  // prevents incorrect indices with proxy model
     }
+    // One broadcast instead of one signal per icon: consumers treat an empty
+    // key as "anything may have changed". Emitting per key made every reindex
+    // O(icons x listeners) and re-invalidated the picker's proxy model per icon.
+    emit iconUpdated({});
 }
 
 QIcon IconList::getIcon(const QString& key) const
