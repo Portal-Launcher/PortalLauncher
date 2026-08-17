@@ -45,6 +45,7 @@ class ImportPage;
 }
 
 class NewInstanceDialog;
+class QTimer;
 
 class ImportPage : public QWidget, public BasePage {
     Q_OBJECT
@@ -65,13 +66,22 @@ class ImportPage : public QWidget, public BasePage {
    private slots:
     void on_modpackBtn_clicked();
     void updateState();
+    void lookupCurseForgeCode();
 
    private:
     QUrl modpackUrl() const;
+    // Treat the field's text as a CurseForge share code: suggest the pack right
+    // away, then look up the author name in the background (debounced).
+    void startCurseForgeCode(const QString& code);
 
    private:
     Ui::ImportPage* ui = nullptr;
     NewInstanceDialog* dialog = nullptr;
     QMap<QString, QString> m_extra_info = {};
     bool m_joiningShare = false;
+
+    QTimer* m_cfCodeTimer = nullptr;  // debounces the metadata lookup while typing
+    QString m_cfCodePending;          // the code we last kicked a lookup for
+    QString m_cfCodeAuthor;           // cached author for m_cfCodePending, if known
+    Task::Ptr m_cfMetaJob;            // in-flight metadata request, if any
 };

@@ -28,6 +28,13 @@ class FlameAPI : public ResourceAPI {
     std::pair<Task::Ptr, QByteArray*> getFiles(const QStringList& fileIds) const;
     std::pair<Task::Ptr, QByteArray*> getFile(const QString& addonId, const QString& fileId) const;
 
+    // Shared profiles: the codes the CurseForge app hands out from "Share Profile".
+    // A code resolves to a normal CurseForge modpack zip, so we can import it through
+    // the usual Flame pipeline once we turn the code into its download URL.
+    static bool isShareCode(const QString& input);
+    static QString shareProfileDownloadUrl(const QString& code);
+    std::pair<Task::Ptr, QByteArray*> getSharedProfileMetadata(const QString& code) const;
+
     static std::pair<Task::Ptr, QByteArray*> getCategories(ModPlatform::ResourceType type);
     static std::pair<Task::Ptr, QByteArray*> getModCategories();
     static QList<ModPlatform::Category> loadModCategories(const QByteArray& response);

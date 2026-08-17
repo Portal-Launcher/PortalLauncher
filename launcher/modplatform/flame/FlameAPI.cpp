@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "FlameAPI.h"
+#include <QFile>
+#include <QRegularExpression>
 #include <memory>
 #include <optional>
 #include "BuildConfig.h"
@@ -155,6 +157,36 @@ std::pair<Task::Ptr, QByteArray*> FlameAPI::getFile(const QString& addonId, cons
     netJob->addNetAction(action);
 
     QObject::connect(netJob.get(), &NetJob::failed, [addonId, fileId] { qDebug() << "Flame API file failure" << addonId << fileId; });
+
+    return { netJob, response };
+}
+
+bool FlameAPI::isShareCode(const QString& input)
+{
+    // CurseForge share codes are short URL-safe tokens (the app only looks one up
+    // once it reaches 8 characters). Keep this strict so real URLs, file paths and
+    // .zip/.mrpack names - all of which contain '.', '/', ':' or '\' - never match.
+    static const QRegularExpression re(QStringLiteral("\\A[A-Za-z0-9_-]{8,64}\\z"));
+    if (!re.match(input).hasMatch())
+        return false;
+    // Never shadow a real local file that happens to be named like a code.
+    if (QFile::exists(input))
+        return false;
+    return true;
+}
+
+QString FlameAPI::shareProfileDownloadUrl(const QString& code)
+{
+    // Returns the raw modpack zip for a valid code (404 otherwise). The x-api-key
+    // header is attached automatically for api.curseforge.com by ApiHeaderProxy.
+    return BuildConfig.FLAME_BASE_URL + "/shared-profile/" + code;
+}
+
+std::pair<Task::Ptr, QByteArray*> FlameAPI::getSharedProfileMetadata(const QString& code) const
+{
+    auto netJob = makeShared<NetJob>(QString("Flame::SharedProfileMetadata"), APPLICATION->network());
+    auto [action, response] = Net::ApiDownload::makeByteArray(QUrl(BuildConfig.FLAME_BASE_URL + "/shared-profile/" + code + "/metadata"));
+    netJob->addNetAction(action);
 
     return { netJob, response };
 }
