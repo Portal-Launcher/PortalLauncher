@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ModrinthSharedSyncTask.h"
 
+#include <QApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QMessageBox>
 
 #include "Application.h"
 #include "icons/IconList.h"
@@ -320,6 +322,32 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         }
         if (!m_configBundleUrl.isEmpty())
             m_changeLog.append(tr("Shared config files updated"));
+    }
+
+    // New external files are the one thing in an update Modrinth cannot vouch
+    // for (no project page, no hash database entry). Before touching any
+    // local file, show what the update does and let the user decline it.
+    if (!firstInstall) {
+        QStringList newExternal;
+        for (const auto& target : m_targets) {
+            if (target.source == QLatin1String("external") && !oldByRel.contains(target.rel))
+                newExternal.append(QFileInfo(target.rel).fileName());
+        }
+        if (!newExternal.isEmpty()) {
+            QString text = tr("The owner's update for \"%1\" adds files that are not verified by Modrinth:\n\n%2\n\n")
+                               .arg(m_instance->name(), newExternal.join('\n'));
+            if (!m_changeLog.isEmpty())
+                text += tr("Full change list:\n%1\n\n").arg(m_changeLog.join('\n'));
+            text += tr("Only apply updates from owners you trust. Apply this update?");
+            QMessageBox confirm(QMessageBox::Question, tr("Apply shared pack update?"), text,
+                                QMessageBox::Yes | QMessageBox::No, QApplication::activeWindow());
+            confirm.setTextFormat(Qt::PlainText);
+            if (confirm.exec() != QMessageBox::Yes) {
+                softOrFail(tr("Update skipped - the shared pack was left at version %1.")
+                               .arg(m_attachment.appliedVersion < 0 ? tr("none") : QString::number(m_attachment.appliedVersion)));
+                return;
+            }
+        }
     }
 
     // Delete previously managed files that are gone from the share.
