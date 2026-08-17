@@ -1,4 +1,6 @@
 #include <QFutureWatcher>
+#include <QJsonArray>
+#include <QRegularExpression>
 
 #include <Json.h>
 #include "Exception.h"
@@ -16,6 +18,34 @@ unsigned getOnlinePlayers(QJsonObject data)
     }
 }
 
+// The description can be a plain string or a chat component tree; flatten it to text
+static QString flattenChatComponent(const QJsonValue& value)
+{
+    if (value.isString())
+        return value.toString();
+    if (value.isArray()) {
+        QString out;
+        for (const auto& entry : value.toArray())
+            out += flattenChatComponent(entry);
+        return out;
+    }
+    if (value.isObject()) {
+        auto obj = value.toObject();
+        QString out = obj.value("text").toString();
+        if (obj.contains("extra"))
+            out += flattenChatComponent(obj.value("extra"));
+        return out;
+    }
+    return QString();
+}
+
+// Strip legacy formatting codes (section sign + one character)
+static QString stripLegacyFormatting(QString text)
+{
+    static const QRegularExpression s_legacyCodes(QStringLiteral("§."));
+    return text.remove(s_legacyCodes).trimmed();
+}
+
 void ServerPingTask::executeTask()
 {
     qDebug() << "Querying status of" << QString("%1:%2").arg(m_domain).arg(m_port);
@@ -29,14 +59,23 @@ void ServerPingTask::executeTask()
         McClient* client = new McClient(nullptr, m_domain, ip, port);
 
         connect(client, &McClient::succeeded, this, [this](QJsonObject data) {
+            m_outputLatencyMs = static_cast<int>(m_pingTimer.elapsed());
             m_outputOnlinePlayers = getOnlinePlayers(data);
-            qDebug() << "Online players:" << m_outputOnlinePlayers;
+            try {
+                m_outputMaxPlayers = Json::requireInteger(Json::requireObject(data, "players"), "max");
+            } catch (Exception&) {
+                m_outputMaxPlayers = -1;
+            }
+            m_outputVersion = data.value("version").toObject().value("name").toString();
+            m_outputMotd = stripLegacyFormatting(flattenChatComponent(data.value("description")));
+            qDebug() << "Online players:" << m_outputOnlinePlayers << "latency:" << m_outputLatencyMs << "ms";
             emitSucceeded();
         });
         connect(client, &McClient::failed, this, [this](QString error) { emitFailed(error); });
 
         // Delete McClient object when done
         connect(client, &McClient::finished, this, [client]() { client->deleteLater(); });
+        m_pingTimer.start();
         client->getStatusData();
     });
     connect(resolver, &McResolver::failed, this, [this](QString error) { emitFailed(error); });

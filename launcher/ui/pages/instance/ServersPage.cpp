@@ -51,15 +51,19 @@
 #include <sstream>
 
 #include <tasks/ConcurrentTask.h>
+#include <QBrush>
 #include <QFileSystemWatcher>
+#include <QGuiApplication>
 #include <QMenu>
+#include <QPalette>
 #include <QTimer>
 
-static const int COLUMN_COUNT = 3;  // 3 , TBD: latency and other nice things.
+static const int COLUMN_COUNT = 4;  // Name, Address, Players, Ping
 
 struct Server {
     // Types
     enum class AcceptsTextures : int { ASK = 0, ALWAYS = 1, NEVER = 2 };
+    enum class Status : int { Unknown = 0, Pinging = 1, Online = 2, Offline = 3 };
 
     // Methods
     Server() { m_name = QObject::tr("Minecraft Server"); }
@@ -112,7 +116,12 @@ struct Server {
     QByteArray m_icon;
 
     // Data - temporary
-    std::optional<int> m_currentPlayers;  // nullopt if not calculated/calculating
+    Status m_status = Status::Unknown;
+    int m_currentPlayers = -1;
+    int m_maxPlayers = -1;
+    int m_latencyMs = -1;
+    QString m_version;
+    QString m_motd;
 };
 
 static std::unique_ptr<nbt::tag_compound> parseServersDat(const QString& filename)
@@ -286,7 +295,9 @@ class ServersModel : public QAbstractListModel {
                 case 1:
                     return tr("Address");
                 case 2:
-                    return tr("Online");
+                    return tr("Players");
+                case 3:
+                    return tr("Ping");
             }
         }
 
@@ -327,14 +338,46 @@ class ServersModel : public QAbstractListModel {
                     case 1:
                         return m_servers[row].m_address;
                     case 2:
-                        if (m_servers[row].m_currentPlayers) {
-                            return *m_servers[row].m_currentPlayers;
-                        } else {
-                            return "...";
+                        switch (m_servers[row].m_status) {
+                            case Server::Status::Pinging:
+                                return tr("...");
+                            case Server::Status::Online:
+                                if (m_servers[row].m_maxPlayers > 0)
+                                    return QString("%1/%2").arg(m_servers[row].m_currentPlayers).arg(m_servers[row].m_maxPlayers);
+                                return QString::number(m_servers[row].m_currentPlayers);
+                            case Server::Status::Offline:
+                                return tr("Offline");
+                            default:
+                                return QVariant();
                         }
+                    case 3:
+                        if (m_servers[row].m_status == Server::Status::Online && m_servers[row].m_latencyMs >= 0)
+                            return tr("%1 ms").arg(m_servers[row].m_latencyMs);
+                        return QVariant();
                     default:
                         return QVariant();
                 }
+            case Qt::ForegroundRole:
+                if (column == 2) {
+                    // status colors are picked per theme so they stay readable on light and dark
+                    const bool darkBase = QGuiApplication::palette().color(QPalette::Base).lightness() < 128;
+                    if (m_servers[row].m_status == Server::Status::Online)
+                        return QBrush(darkBase ? QColor(0x1b, 0xd9, 0x6a) : QColor(0x0f, 0x7d, 0x3e));
+                    if (m_servers[row].m_status == Server::Status::Offline)
+                        return QBrush(darkBase ? QColor(0xf0, 0x6c, 0x6c) : QColor(0xb3, 0x26, 0x1e));
+                }
+                return QVariant();
+            case Qt::ToolTipRole: {
+                auto& server = m_servers[row];
+                if (server.m_status != Server::Status::Online)
+                    return QVariant();
+                QStringList lines;
+                if (!server.m_motd.isEmpty())
+                    lines << server.m_motd;
+                if (!server.m_version.isEmpty())
+                    lines << tr("Version: %1").arg(server.m_version);
+                return lines.isEmpty() ? QVariant() : lines.join('\n');
+            }
             case ServerPtrRole:
                 if (column == 0)
                     return QVariant::fromValue<void*>((void*)&m_servers[row]);
@@ -436,8 +479,8 @@ class ServersModel : public QAbstractListModel {
             new ConcurrentTask("Query servers status", APPLICATION->settings()->get("NumberOfConcurrentTasks").toInt()));
         int row = 0;
         for (Server& server : m_servers) {
-            // reset current players
-            server.m_currentPlayers = {};
+            // reset status while the query runs
+            server.m_status = Server::Status::Pinging;
             emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
 
             // Start task to query server status
@@ -446,10 +489,22 @@ class ServersModel : public QAbstractListModel {
             m_currentQueryTask->addTask(Task::Ptr(task));
 
             // Update the model when the task is done
-            connect(task, &Task::finished, this, [this, task, row]() {
-                if (m_servers.size() < row)
+            connect(task, &Task::succeeded, this, [this, task, row]() {
+                if (row >= m_servers.size())
                     return;
-                m_servers[row].m_currentPlayers = task->m_outputOnlinePlayers;
+                auto& server = m_servers[row];
+                server.m_status = Server::Status::Online;
+                server.m_currentPlayers = task->m_outputOnlinePlayers;
+                server.m_maxPlayers = task->m_outputMaxPlayers;
+                server.m_latencyMs = task->m_outputLatencyMs;
+                server.m_version = task->m_outputVersion;
+                server.m_motd = task->m_outputMotd;
+                emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
+            });
+            connect(task, &Task::failed, this, [this, row](QString) {
+                if (row >= m_servers.size())
+                    return;
+                m_servers[row].m_status = Server::Status::Offline;
                 emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
             });
             row++;
