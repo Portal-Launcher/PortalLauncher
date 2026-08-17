@@ -17,13 +17,15 @@ Prism Launcher is a great launcher, but playing the same modpack with friends st
 
 ## Differences from Prism Launcher
 
-- **Modrinth Shared Instances, built in.** Share any instance from its Sharing page and push updates as you change it. Friends' copies sync automatically before they play: mods, configs, the pack icon, and Minecraft/loader version bumps. Hosts get an unpushed-changes warning, members see a changelog of what changed before they play.
+- **Modrinth Shared Instances, built in.** Share any instance from its Sharing page and push updates as you change it. Friends' copies sync automatically before they play: mods, configs, the pack icon, and Minecraft/loader version bumps. Hosts get an unpushed-changes warning, members see a changelog of what changed before they play, and pack owners can mark mods as optional so friends can turn those off without breaking sync.
 - **Invites that feel modern.** Invite people with a `modrinth.com/share` link or directly by Modrinth username. Join from a link (File > Join Shared Pack, or paste it into Add Instance > Import), or accept pending invites right in the launcher.
 - **A friends panel.** See which of your Modrinth friends are online and what they are playing, send and accept friend requests and pack invites, and join what a friend is playing in one click.
-- **A real mod page when browsing.** Downloading mods shows galleries, download counts, versions, and changelogs for both Modrinth and CurseForge, not just a text blurb.
+- **Discord Rich Presence.** People on Discord can see which pack you are playing while the game runs.
+- **A real mod page when browsing.** Downloading mods shows galleries, download counts, versions, and changelogs for both Modrinth and CurseForge, not just a text blurb, plus a filter to hide versions that do not fit your instance.
 - **Safer mod updates.** Updating mods snapshots them first: "Revert Last Mod Update" undoes a bad update in one click, and the update review warns about missing dependencies.
-- **Modpack update notifications.** Instances installed from Modrinth or CurseForge get an update badge when the pack author publishes a new version, with a right-click shortcut to update.
-- **Small things that add up.** An instance search bar (Ctrl+F), a resume button that jumps back into the instance you last played, and shared/joined badges on instance cards.
+- **Modpack update notifications.** Instances installed from Modrinth or CurseForge get an update badge when the pack author publishes a new version, a right-click shortcut to update, and an opt-in prompt that offers the update right before you launch.
+- **Your library, your order.** Drag instances around to arrange them exactly how you like, move packs between groups from the right-click menu, and filter everything with the search bar (Ctrl+F).
+- **Small things that add up.** A Servers page with live ping, MOTD and player counts, a duplicate mod finder, a Play button that turns into Stop while the game runs, a resume button that jumps back into the instance you last played, CurseForge modpack import from share codes, already-downloaded mods reused across instances instead of redownloading, and shared/joined badges on instance cards.
 
 Everything else works exactly like Prism Launcher, and it reads the same data folder, so your existing instances, accounts, and settings carry over as-is.
 
