@@ -1382,7 +1382,8 @@ void MainWindow::on_actionChangeInstIcon_triggered()
 
 void MainWindow::iconUpdated(QString icon)
 {
-    if (icon == m_currentInstIcon) {
+    // An empty key is a broadcast: anything may have changed.
+    if (icon.isEmpty() || icon == m_currentInstIcon) {
         auto new_icon = APPLICATION->icons()->getIcon(m_currentInstIcon);
         ui->actionChangeInstIcon->setIcon(new_icon);
         changeIconButton->setIcon(new_icon);
@@ -1961,9 +1962,13 @@ void MainWindow::instanceChanged(const QModelIndex& current, [[maybe_unused]] co
         ui->instanceToolBar->setEnabled(true);
         setInstanceActionsEnabled(true);
         updateShareQuickActions();
+        const bool running = m_selectedInstance->isRunning();
         ui->actionLaunchInstance->setEnabled(m_selectedInstance->canLaunch());
-
-        ui->actionKillInstance->setEnabled(m_selectedInstance->isRunning());
+        ui->actionKillInstance->setEnabled(running);
+        // One Play/Stop slot: show whichever of the two currently applies
+        // instead of a permanently visible, usually-disabled Kill button.
+        ui->actionLaunchInstance->setVisible(!running);
+        ui->actionKillInstance->setVisible(running);
         ui->actionExportInstance->setEnabled(m_selectedInstance->canExport());
         renameButton->setText(m_selectedInstance->name());
         m_statusLeft->setText(m_selectedInstance->getStatusbarDescription());
@@ -2006,6 +2011,8 @@ void MainWindow::selectionBad()
     statusBar()->clearMessage();
     ui->instanceToolBar->setEnabled(false);
     setInstanceActionsEnabled(false);
+    ui->actionLaunchInstance->setVisible(true);
+    ui->actionKillInstance->setVisible(false);
     updateLaunchButton();
     renameButton->setText(tr("Rename Instance"));
     updateInstanceToolIcon("grass");
