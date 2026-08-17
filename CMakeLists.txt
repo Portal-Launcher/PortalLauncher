@@ -179,9 +179,12 @@ set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CAC
 set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for legacy (<=1.5.2) FML Libraries.")
 
 ######## Set version numbers ########
-set(Launcher_VERSION_MAJOR 11)
+# Portal Launcher has its own versioning, separate from upstream Prism.
+# Release tags must match this exactly (e.g. "1.0.0") so the updater
+# can compare the installed version against GitHub releases.
+set(Launcher_VERSION_MAJOR 1)
 set(Launcher_VERSION_MINOR 0)
-set(Launcher_VERSION_PATCH 3)
+set(Launcher_VERSION_PATCH 0)
 
 set(Launcher_VERSION_NAME "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}.${Launcher_VERSION_PATCH}")
 set(Launcher_VERSION_NAME4 "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}.${Launcher_VERSION_PATCH}.0")
@@ -190,11 +193,13 @@ set(Launcher_VERSION_NAME4_COMMA "${Launcher_VERSION_MAJOR},${Launcher_VERSION_M
 # Build platform.
 set(Launcher_BUILD_PLATFORM "unknown" CACHE STRING "A short string identifying the platform that this build was built for. Only used to display in the about dialog.")
 
-# Github repo URL with releases for updater
-set(Launcher_UPDATER_GITHUB_REPO "https://github.com/PrismLauncher/PrismLauncher" CACHE STRING "Base github URL for the updater.")
+# Github repo URL with releases for updater. FORCE so existing build caches
+# pick up Portal's update channel instead of upstream's.
+set(Launcher_UPDATER_GITHUB_REPO "https://github.com/TinsleyDevers/PrismLauncher" CACHE STRING "Base github URL for the updater." FORCE)
 
-# Name to help updater identify valid artifacts
-set(Launcher_BUILD_ARTIFACT "" CACHE STRING "Artifact name to help the updater identify valid artifacts.")
+# Name to help updater identify valid artifacts. Release assets must contain
+# this string (e.g. PortalLauncher-Windows-MSVC-1.0.0.zip).
+set(Launcher_BUILD_ARTIFACT "Windows-MSVC" CACHE STRING "Artifact name to help the updater identify valid artifacts." FORCE)
 
 # The metadata server
 set(Launcher_META_URL "https://meta.prismlauncher.org/v1/" CACHE STRING "URL to fetch Launcher's meta files from.")
@@ -202,21 +207,18 @@ set(Launcher_META_URL "https://meta.prismlauncher.org/v1/" CACHE STRING "URL to 
 # Imgur API Client ID
 set(Launcher_IMGUR_CLIENT_ID "5b97b0713fba4a3" CACHE STRING "Client ID you can get from Imgur when you register an application")
 
-# Bug tracker URL
-set(Launcher_BUG_TRACKER_URL "https://github.com/PrismLauncher/PrismLauncher/issues" CACHE STRING "URL for the bug tracker.")
+# Bug tracker URL: Portal issues go to the fork, not upstream
+set(Launcher_BUG_TRACKER_URL "https://github.com/TinsleyDevers/PrismLauncher/issues" CACHE STRING "URL for the bug tracker." FORCE)
 
 # Translations Platform URL
 set(Launcher_TRANSLATIONS_URL "https://hosted.weblate.org/projects/prismlauncher/launcher/" CACHE STRING "URL for the translations platform.")
 set(Launcher_TRANSLATION_FILES_URL "https://i18n.prismlauncher.org/" CACHE STRING "URL for the translations files.")
 
-# Matrix Space
-set(Launcher_MATRIX_URL "https://prismlauncher.org/matrix" CACHE STRING "URL to the Matrix Space")
-
-# Discord URL
-set(Launcher_DISCORD_URL "https://prismlauncher.org/discord" CACHE STRING "URL for the Discord guild.")
-
-# Subreddit URL
-set(Launcher_SUBREDDIT_URL "https://prismlauncher.org/reddit" CACHE STRING "URL for the subreddit.")
+# Matrix / Discord / Subreddit are upstream Prism's communities; Portal users
+# should not be sent there for support. Empty URLs hide the menu entries.
+set(Launcher_MATRIX_URL "" CACHE STRING "URL to the Matrix Space" FORCE)
+set(Launcher_DISCORD_URL "" CACHE STRING "URL for the Discord guild." FORCE)
+set(Launcher_SUBREDDIT_URL "" CACHE STRING "URL for the subreddit." FORCE)
 
 # Builds
 set(Launcher_QT_VERSION_MAJOR "6" CACHE STRING "Major Qt version to build against")

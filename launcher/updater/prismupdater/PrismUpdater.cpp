@@ -674,7 +674,6 @@ QList<GitHubReleaseAsset> PrismUpdaterApp::validReleaseArtifacts(const GitHubRel
         auto [platform, platform_qt_ver] = StringUtils::splitFirst(BuildConfig.BUILD_ARTIFACT.toLower(), "-qt");
         auto system_is_arm = QSysInfo::buildCpuArchitecture().contains("arm64");
         auto asset_is_arm = asset_name.contains("arm64");
-        auto asset_is_archive = asset_name.endsWith(".zip") || asset_name.endsWith(".tar.gz");
 
         bool for_platform = !platform.isEmpty() && asset_name.contains(platform);
         if (!for_platform) {
@@ -689,10 +688,9 @@ QList<GitHubReleaseAsset> PrismUpdaterApp::validReleaseArtifacts(const GitHubRel
             qDebug() << "Rejecting" << asset.name << "because architecture does not match";
             for_platform = false;
         }
-        if (for_platform && platform.contains("windows") && !m_isPortable && asset_is_archive) {
-            qDebug() << "Rejecting" << asset.name << "because it is not an installer";
-            for_platform = false;
-        }
+        // Portal ships zip archives only (no installer), so archives are valid
+        // for non-portable Windows installs too; the generic archive install
+        // path handles them the same way it does on other platforms.
 
         static const QRegularExpression s_qtPattern("-qt(\\d+)");
         auto qt_match = s_qtPattern.match(asset_name);
