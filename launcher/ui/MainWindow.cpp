@@ -346,6 +346,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         view->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(view, &QWidget::customContextMenuRequested, this, &MainWindow::showInstanceContextMenu);
         connect(view, &InstanceView::droppedURLs, this, &MainWindow::processURLs, Qt::QueuedConnection);
+        connect(view, &InstanceView::customSortEngaged, this, [this] {
+            statusBar()->showMessage(
+                tr("Instances now follow your custom order. Pick a different sorting mode any time in Settings > Launcher."), 8000);
+        });
 
         proxymodel = new InstanceProxyModel(this);
         proxymodel->setSourceModel(APPLICATION->instances());
@@ -655,6 +659,10 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
         actions.removeLast();
         actions.removeLast();
 
+        // joining a shared pack is not about the clicked instance; it already
+        // has enough entry points (File menu, New Instance, friend invites)
+        actions.removeAll(ui->actionJoinSharedPack);
+
         actions.prepend(ui->actionChangeInstIcon);
         actions.prepend(ui->actionRenameInstance);
 
@@ -697,6 +705,7 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
         // Quick "move to group" submenu so regrouping does not need the modal
         // group dialog every time.
         auto* moveMenu = new QMenu(tr("Move to group"), &myMenu);
+        moveMenu->setIcon(QIcon::fromTheme("tag"));
         const QString instanceId = m_selectedInstance->id();
         const QString currentGroup = APPLICATION->instances()->getInstanceGroup(instanceId);
         auto addGroupAction = [this, moveMenu, instanceId, currentGroup](const QString& label, const QString& target) {

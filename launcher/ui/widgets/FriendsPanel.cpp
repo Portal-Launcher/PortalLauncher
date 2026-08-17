@@ -38,6 +38,9 @@ enum ItemRole {
 FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
 {
     setObjectName("friendsPanel");  // required for window-state save/restore
+    // No close X or float button: the Friends toolbar button is the one way
+    // to show and hide the panel, so it can never get lost as a stray window.
+    setFeatures(QDockWidget::DockWidgetMovable);
     auto* body = new QWidget(this);
     auto* layout = new QVBoxLayout(body);
     layout->setContentsMargins(6, 6, 6, 6);
