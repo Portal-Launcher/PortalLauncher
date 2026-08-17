@@ -62,6 +62,7 @@ MinecraftSettingsWidget::MinecraftSettingsWidget(MinecraftInstance* instance, QW
         m_ui->globalDataPacksGroupBox->hide();
         m_ui->loaderGroup->hide();
     } else {
+        m_ui->discordGroupBox->hide();
         m_javaSettings = new JavaSettingsWidget(m_instance, this);
         m_ui->javaScrollArea->setWidget(m_javaSettings);
 
@@ -176,6 +177,12 @@ void MinecraftSettingsWidget::loadSettings()
     m_ui->recordGameTime->setChecked(settings->get("RecordGameTime").toBool());
     m_ui->showGlobalGameTime->setChecked(m_instance == nullptr && settings->get("ShowGlobalGameTime").toBool());
     m_ui->showGameTimeWithoutDays->setChecked(m_instance == nullptr && settings->get("ShowGameTimeWithoutDays").toBool());
+
+    // Discord Rich Presence (global only)
+    if (m_instance == nullptr) {
+        m_ui->discordPresenceCheckBox->setChecked(settings->get("DiscordPresenceEnabled").toBool());
+        m_ui->discordClientIdEdit->setText(settings->get("DiscordClientId").toString());
+    }
 
     // Console
     m_ui->consoleSettingsBox->setChecked(m_instance == nullptr || settings->get("OverrideConsole").toBool());
@@ -436,6 +443,10 @@ void MinecraftSettingsWidget::saveSettings()
         if (m_instance == nullptr) {
             settings->set("ShowGlobalGameTime", m_ui->showGlobalGameTime->isChecked());
             settings->set("ShowGameTimeWithoutDays", m_ui->showGameTimeWithoutDays->isChecked());
+
+            // Discord Rich Presence
+            settings->set("DiscordPresenceEnabled", m_ui->discordPresenceCheckBox->isChecked());
+            settings->set("DiscordClientId", m_ui->discordClientIdEdit->text().trimmed());
         }
 
         if (m_instance != nullptr) {

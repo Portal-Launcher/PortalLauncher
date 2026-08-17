@@ -56,6 +56,8 @@
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+#include "DiscordPresence.h"
+#include "modplatform/ManagedPackUpdateTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "ui/dialogs/ProgressDialog.h"
@@ -767,6 +769,13 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("JvmArgs", "");
         m_settings->registerSetting("OptimizedGcArgs", false);
         m_settings->registerSetting("OptimizedGcPreset", "g1");
+
+        // Discord Rich Presence
+        m_settings->registerSetting("DiscordPresenceEnabled", false);
+        m_settings->registerSetting("DiscordClientId", "");
+
+        // Update channel: also offer GitHub pre-releases when set
+        m_settings->registerSetting("UpdaterBetaChannel", false);
         m_settings->registerSetting("IgnoreJavaCompatibility", false);
         m_settings->registerSetting("IgnoreJavaWizard", false);
         auto defaultEnableAutoJava = m_settings->get("JavaPath").toString().isEmpty();
@@ -1552,6 +1561,34 @@ bool Application::launch(BaseInstance* instance,
     if (m_updateRunning) {
         qDebug() << "Cannot launch instances while an update is running. Please try again when updates are completed.";
     } else if (instance->canLaunch()) {
+        // Managed packs: when the instance opted in, offer the already-detected
+        // pack update right before playing. Declining or failing never blocks
+        // the game; rollback stays available from the Mods page afterwards.
+        if (instance->isManagedPack() && instance->settings()->get("ManagedPackUpdateOnLaunch").toBool() &&
+            instance->hasUpdateAvailable() && !instance->updateAvailableVersion().isEmpty()) {
+            QMessageBox updateBox(m_mainWindow);
+            updateBox.setIcon(QMessageBox::Question);
+            updateBox.setWindowTitle(tr("Pack update available"));
+            updateBox.setText(tr("%1 has a pack update: version %2.").arg(instance->name(), instance->updateAvailableVersion()));
+            updateBox.setInformativeText(tr("Update before playing?"));
+            auto* updateButton = updateBox.addButton(tr("Update and play"), QMessageBox::AcceptRole);
+            updateBox.addButton(tr("Play current version"), QMessageBox::RejectRole);
+            updateBox.exec();
+            if (updateBox.clickedButton() == updateButton) {
+                const QString instanceId = instance->id();
+                ManagedPackUpdateTask updateTask(instance, m_mainWindow);
+                ProgressDialog updateDialog(m_mainWindow);
+                updateDialog.setSkipButton(true, tr("Skip update"));
+                updateDialog.execWithTask(&updateTask);
+                if (updateTask.wasSuccessful()) {
+                    // The update rebuilds the instance object; launch the fresh
+                    // one and let this call end here.
+                    if (auto* fresh = m_instances->getInstanceById(instanceId); fresh && fresh != instance)
+                        return launch(fresh, mode, targetToJoin, accountToUse, offlineName);
+                }
+            }
+        }
+
         // Shared instances: joined packs pull the owner's latest changes right
         // before launch; owners with auto-push publish their changes. Failures
         // never block playing, and nothing runs when signed out.
@@ -1613,6 +1650,7 @@ bool Application::launch(BaseInstance* instance,
             ModrinthFriends::get()->ensureConnected();
             ModrinthFriends::get()->setPlaying(instance->name());
         }
+        DiscordPresence::get()->setPlaying(instance->name());
         QMetaObject::invokeMethod(controller.get(), &Task::start, Qt::QueuedConnection);
         return true;
     } else if (instance->isRunning()) {
@@ -1669,6 +1707,7 @@ void Application::subRunningInstance()
         // singleton just to say we stopped playing.
         if (ModrinthShared::isSignedIn())
             ModrinthFriends::get()->setPlaying(QString());
+        DiscordPresence::get()->setPlaying(QString());
     }
 }
 
@@ -2072,7 +2111,7 @@ void Application::triggerUpdateCheck()
 {
     if (m_updater) {
         qDebug() << "Checking for updates.";
-        m_updater->setBetaAllowed(false);  // There are no other channels than stable
+        m_updater->setBetaAllowed(m_settings->get("UpdaterBetaChannel").toBool());
         m_updater->checkForUpdates();
     } else {
         qDebug() << "Updater not available.";

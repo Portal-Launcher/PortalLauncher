@@ -363,6 +363,46 @@ It is most likely you will need to change the path - please refer to the mod's w
             </widget>
            </item>
            <item>
+            <widget class="QGroupBox" name="discordGroupBox">
+             <property name="title">
+              <string>Discord</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_discord">
+              <item>
+               <widget class="QCheckBox" name="discordPresenceCheckBox">
+                <property name="toolTip">
+                 <string>Shows the pack you are playing and for how long in your Discord status. Requires Discord running on this PC and an application ID below.</string>
+                </property>
+                <property name="text">
+                 <string>Show what I'm playing on Discord</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_discord">
+                <item>
+                 <widget class="QLabel" name="discordClientIdLabel">
+                  <property name="text">
+                   <string>Application ID:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="discordClientIdEdit">
+                  <property name="toolTip">
+                   <string>Create a free application at discord.com/developers/applications (name it anything, e.g. Portal Launcher), then paste its Application ID here. The application name is what Discord shows you as playing.</string>
+                  </property>
+                  <property name="placeholderText">
+                   <string>Paste a Discord Application ID</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
             <widget class="QGroupBox" name="instanceAccountGroupBox">
              <property name="title">
               <string>Override &amp;Default Account</string>
