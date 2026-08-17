@@ -300,6 +300,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     if (BuildConfig.NEWS_RSS_URL.isEmpty()) {
         ui->newsToolBar->hide();
         ui->newsToolBar->toggleViewAction()->setVisible(false);
+        // no news feed means no news dialog; the Help menu entry would just do nothing
+        ui->actionMoreNews->setVisible(false);
     } else {
         m_newsChecker.reset(new NewsChecker(APPLICATION->network(), BuildConfig.NEWS_RSS_URL));
         newsLabel = new QToolButton();

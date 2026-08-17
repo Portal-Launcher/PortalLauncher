@@ -41,6 +41,13 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
     // No close X or float button: the Friends toolbar button is the one way
     // to show and hide the panel, so it can never get lost as a stray window.
     setFeatures(QDockWidget::DockWidgetMovable);
+    // Window states saved before the popout button was removed can restore the
+    // panel floating (possibly offscreen, looking like the toggle is broken);
+    // snap it back into the dock whenever anything tries to float it.
+    connect(this, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+        if (floating)
+            QMetaObject::invokeMethod(this, [this] { setFloating(false); }, Qt::QueuedConnection);
+    });
     auto* body = new QWidget(this);
     auto* layout = new QVBoxLayout(body);
     layout->setContentsMargins(6, 6, 6, 6);
@@ -114,6 +121,8 @@ void FriendsPanel::scheduleRebuild()
 void FriendsPanel::showEvent(QShowEvent* event)
 {
     QDockWidget::showEvent(event);
+    if (isFloating())
+        setFloating(false);  // stray float state from an old session
     if (ModrinthShared::isSignedIn()) {
         ModrinthFriends::get()->ensureConnected();
         ModrinthFriends::get()->refresh();

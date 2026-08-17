@@ -370,19 +370,55 @@ QToolBar::separator {
     width: 1px;
     margin: 4px 4px;
 }
+/* Standalone tool buttons (the instance window's Launch split button and
+   friends) read as real raised buttons; toolbar buttons stay flat below. */
 QToolButton {
-    background: transparent;
-    border: none;
+    background-color: #2a2338;
+    color: #e9e4f4;
+    border: 1px solid #3c3352;
     border-radius: 5px;
-    padding: 4px;
+    padding: 4px 10px;
 }
 QToolButton:hover {
-    background-color: #2a2338;
+    background-color: #332b45;
+    border-color: #5b4a85;
 }
 QToolButton:pressed {
     background-color: #201a2e;
 }
 QToolButton:checked {
+    background-color: #3b2f56;
+    border-color: #7c3aed;
+}
+QToolButton:disabled {
+    background-color: #1d1829;
+    color: #6b6280;
+    border-color: #2c2540;
+}
+QToolButton[popupMode="1"],
+QToolButton[popupMode="MenuButtonPopup"] {
+    padding-right: 18px; /* room for the menu segment */
+}
+QToolButton::menu-button {
+    background: transparent;
+    border: none;
+    border-left: 1px solid #3c3352;
+    width: 14px;
+    margin: 3px 0;
+}
+QToolBar QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 4px;
+}
+QToolBar QToolButton:hover {
+    background-color: #2a2338;
+}
+QToolBar QToolButton:pressed {
+    background-color: #201a2e;
+}
+QToolBar QToolButton:checked {
     background-color: rgba(124, 58, 237, 70);
 }
 QStatusBar {
