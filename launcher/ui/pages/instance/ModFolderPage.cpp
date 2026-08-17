@@ -57,6 +57,7 @@
 #include "Application.h"
 
 #include "ui/dialogs/CustomMessageBox.h"
+#include "ui/dialogs/ModCleanupDialog.h"
 #include "ui/dialogs/ResourceDownloadDialog.h"
 #include "ui/dialogs/ResourceUpdateDialog.h"
 #include "ui/dialogs/ScrollMessageBox.h"
@@ -124,6 +125,10 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     ui->actionChangeVersion->setToolTip(tr("Change a mod's version."));
     connect(ui->actionChangeVersion, &QAction::triggered, this, &ModFolderPage::changeModVersion);
     ui->actionsToolbar->insertActionAfter(ui->actionUpdateItem, ui->actionChangeVersion);
+
+    auto* findDuplicates = updateMenu->addAction(tr("Find Duplicates"));
+    findDuplicates->setToolTip(tr("Look for mods installed more than once and clean up the redundant copies."));
+    connect(findDuplicates, &QAction::triggered, this, &ModFolderPage::findDuplicates);
 
     ui->actionViewHomepage->setToolTip(tr("View the homepages of all selected mods."));
 
@@ -334,6 +339,18 @@ void ModFolderPage::updateMods(bool includeDeps)
 
         m_model->update();
     }
+}
+
+void ModFolderPage::findDuplicates()
+{
+    ModCleanupDialog dialog(m_model, this);
+    if (!dialog.hasDuplicates()) {
+        CustomMessageBox::selectable(this, tr("Find Duplicates"), tr("No duplicate mods were found. Nice and tidy."),
+                                     QMessageBox::Information)
+            ->exec();
+        return;
+    }
+    dialog.exec();
 }
 
 void ModFolderPage::revertLastUpdate()

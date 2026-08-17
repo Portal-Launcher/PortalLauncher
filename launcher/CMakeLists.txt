@@ -1128,6 +1128,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/ChooseProviderDialog.cpp
     ui/dialogs/ResourceUpdateDialog.cpp
     ui/dialogs/ResourceUpdateDialog.h
+    ui/dialogs/ModCleanupDialog.cpp
+    ui/dialogs/ModCleanupDialog.h
     ui/dialogs/InstallLoaderDialog.cpp
     ui/dialogs/InstallLoaderDialog.h
     ui/dialogs/ChooseOfflineNameDialog.cpp
