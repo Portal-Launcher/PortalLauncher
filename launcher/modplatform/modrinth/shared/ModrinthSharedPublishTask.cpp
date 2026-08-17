@@ -365,36 +365,7 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
     const QString fileType = upload.value("file_type").toString();
     const QUrl url(upload.value("url").toString());
 
-    QByteArray bytes;
-    if (fileType == QLatin1String("configs")) {
-        bytes = buildConfigBundle();
-        if (bytes.isEmpty()) {
-            m_uploadFailed = true;
-            emitFailed(tr("Could not build the config bundle."));
-            return;
-        }
-    } else {
-        const ContentFile* candidate = nullptr;
-        for (const auto& file : m_externalFiles) {
-            if (file.fileName == fileName && file.type == fileType) {
-                candidate = &file;
-                break;
-            }
-        }
-        if (!candidate)
-            return;  // service asked for something we do not have; skip
-        QFile file(candidate->absPath);
-        if (!file.open(QIODevice::ReadOnly)) {
-            m_uploadFailed = true;
-            emitFailed(tr("Could not read %1 for upload.").arg(fileName));
-            return;
-        }
-        bytes = file.readAll();
-    }
-
-    m_activeUploads++;
-    setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
-    ModrinthShared::uploadBytes(this, url, bytes, [this, fileName](const ModrinthShared::Response& res) {
+    auto onDone = [this, fileName](const ModrinthShared::Response& res) {
         m_activeUploads--;
         if (m_uploadFailed)
             return;
@@ -406,7 +377,36 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
         m_uploadedCount++;
         setProgress(m_uploadedCount, qMax(1, static_cast<int>(m_uploads.size())));
         pumpUploads();
-    });
+    };
+
+    if (fileType == QLatin1String("configs")) {
+        const QByteArray bytes = buildConfigBundle();
+        if (bytes.isEmpty()) {
+            m_uploadFailed = true;
+            emitFailed(tr("Could not build the config bundle."));
+            return;
+        }
+        m_activeUploads++;
+        setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
+        ModrinthShared::uploadBytes(this, url, bytes, onDone);
+        return;
+    }
+
+    const ContentFile* candidate = nullptr;
+    for (const auto& file : m_externalFiles) {
+        if (file.fileName == fileName && file.type == fileType) {
+            candidate = &file;
+            break;
+        }
+    }
+    if (!candidate)
+        return;  // service asked for something we do not have; skip
+
+    m_activeUploads++;
+    setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
+    // Streamed from disk: four concurrent 200 MB jars used to mean 800 MB of
+    // launcher memory during a push.
+    ModrinthShared::uploadFile(this, url, candidate->absPath, onDone);
 }
 
 void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)

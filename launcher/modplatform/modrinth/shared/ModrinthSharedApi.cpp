@@ -2,6 +2,7 @@
 #include "ModrinthSharedApi.h"
 
 #include <QDateTime>
+#include <QFile>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -404,6 +405,56 @@ void uploadBytes(QObject* ctx, const QUrl& uploadUrl, const QByteArray& bytes, C
         return;
     }
     request(ctx, "PUT", uploadUrl, "application/octet-stream", bytes, Auth::ServiceBearer, std::move(cb));
+}
+
+void uploadFile(QObject* ctx, const QUrl& uploadUrl, const QString& filePath, Callback cb)
+{
+    auto deliverError = [ctx, cb](const QString& error) {
+        if (!cb)
+            return;
+        Response bad;
+        bad.error = error;
+        QMetaObject::invokeMethod(ctx ? ctx : qApp, [cb, bad]() { cb(bad); }, Qt::QueuedConnection);
+    };
+
+    if (QUrl(serviceBaseUrl()).host().compare(uploadUrl.host(), Qt::CaseInsensitive) != 0) {
+        deliverError(QStringLiteral("Upload URL has an unexpected origin: %1").arg(uploadUrl.host()));
+        return;
+    }
+
+    auto* file = new QFile(filePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        delete file;
+        deliverError(QStringLiteral("Could not open %1 for upload").arg(filePath));
+        return;
+    }
+
+    QNetworkRequest req(uploadUrl);
+    req.setHeader(QNetworkRequest::UserAgentHeader, APPLICATION->getUserAgent().toUtf8());
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
+    req.setRawHeader("Authorization", "Bearer " + token().toUtf8());
+    req.setTransferTimeout(5 * 60 * 1000);
+
+    // Streaming from the QFile keeps memory flat regardless of file size.
+    QNetworkReply* reply = APPLICATION->network()->sendCustomRequest(req, "PUT", file);
+    file->setParent(reply);  // the stream is reaped with the reply
+    QObject::connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    QPointer<QObject> guard(ctx);
+    QObject::connect(reply, &QNetworkReply::finished, ctx ? ctx : reply, [reply, guard, ctx, cb, uploadUrl]() {
+        if (ctx && guard.isNull())
+            return;
+        Response out;
+        out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray data = reply->readAll();
+        out.body = data;
+        out.ok = (reply->error() == QNetworkReply::NoError) && out.status >= 200 && out.status < 300;
+        if (!out.ok) {
+            const QString detail = data.isEmpty() ? reply->errorString() : QString::fromUtf8(data.left(200));
+            out.error = QStringLiteral("PUT %1 failed (HTTP %2): %3").arg(uploadUrl.path(), QString::number(out.status), detail);
+        }
+        if (cb)
+            cb(out);
+    });
 }
 
 void uploadIcon(QObject* ctx, const QString& id, const QByteArray& bytes, Callback cb)

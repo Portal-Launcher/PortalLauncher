@@ -83,6 +83,9 @@ void removeMembers(QObject* ctx, const QString& id, const QStringList& userIds, 
 void getLatestVersion(QObject* ctx, const QString& id, Callback cb);
 void createVersion(QObject* ctx, const QString& id, const QJsonObject& payload, Callback cb);
 void uploadBytes(QObject* ctx, const QUrl& uploadUrl, const QByteArray& bytes, Callback cb);
+/** Streams a file from disk instead of reading it into memory first; use for
+ *  anything that can be large (mod jars during a push). */
+void uploadFile(QObject* ctx, const QUrl& uploadUrl, const QString& filePath, Callback cb);
 void uploadIcon(QObject* ctx, const QString& id, const QByteArray& bytes, Callback cb);
 void createInvite(QObject* ctx, const QString& id, int maxAgeSeconds, int maxUses, Callback cb);
 void getInviteInfo(QObject* ctx, const QString& inviteId, Callback cb);  // unauthenticated
