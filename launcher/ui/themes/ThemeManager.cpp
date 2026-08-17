@@ -261,6 +261,20 @@ void ThemeManager::setApplicationTheme(const QString& name, bool initial)
         auto& theme = themeIter->second;
         themeDebugLog() << "applying theme" << theme->name();
         theme->apply(initial);
+
+        // Runtime theme switches can leave live widgets (notably dock panels
+        // like Friends) rendering with the previous palette; force a fresh
+        // polish so every widget takes the new look immediately.
+        if (!initial) {
+            auto* style = QApplication::style();
+            const auto widgets = QApplication::allWidgets();
+            for (QWidget* widget : widgets) {
+                style->unpolish(widget);
+                style->polish(widget);
+                widget->update();
+            }
+        }
+
         setTitlebarColorOfAllWindowsOnMac(qApp->palette().window().color());
 
         m_logColors = theme->logColorScheme();

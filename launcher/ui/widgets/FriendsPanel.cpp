@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "FriendsPanel.h"
 
+#include <QApplication>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QMessageBox>
@@ -91,6 +93,25 @@ void FriendsPanel::showEvent(QShowEvent* event)
         ModrinthFriends::get()->refresh();
         reloadInvites();
     }
+}
+
+bool FriendsPanel::event(QEvent* event)
+{
+    // The dock can keep rendering with the previous palette when the theme
+    // changes at runtime (launcher theme switch, or Windows flipping between
+    // light and dark while the System theme is active). Re-polish the whole
+    // panel so it always follows.
+    if (event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::ThemeChange) {
+        auto* style = QApplication::style();
+        const auto children = findChildren<QWidget*>();
+        for (auto* child : children) {
+            style->unpolish(child);
+            style->polish(child);
+            child->update();
+        }
+        update();
+    }
+    return QDockWidget::event(event);
 }
 
 void FriendsPanel::reloadInvites()
