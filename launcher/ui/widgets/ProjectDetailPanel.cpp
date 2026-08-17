@@ -223,9 +223,11 @@ ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
     versionsLayout->addWidget(m_versions, 1);
     m_tabs->addTab(versionsTab, tr("Versions"));
 
-    // Room for descenders (the g in "Changelog" clips in document mode otherwise);
-    // only vertical padding is set so the active theme keeps its own look.
-    m_tabs->tabBar()->setStyleSheet(QStringLiteral("QTabBar::tab { padding-top: 4px; padding-bottom: 6px; }"));
+    // Room for descenders (the g in "Changelog" clips in document mode otherwise).
+    // Horizontal padding must be set too: once a stylesheet touches the tab's
+    // padding, Qt drops the native padding entirely, and themes without their
+    // own QTabBar::tab rule would render the tabs squished together.
+    m_tabs->tabBar()->setStyleSheet(QStringLiteral("QTabBar::tab { padding: 4px 12px 6px 12px; }"));
 
     // Start fetching the full-size gallery images as soon as the gallery is
     // opened, so the image viewer is instant instead of loading per click.
