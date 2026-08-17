@@ -21,6 +21,7 @@
 #include "minecraft/Component.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
+#include "tools/PackSquash.h"
 
 namespace {
 
@@ -426,6 +427,18 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
 
     m_activeUploads++;
     setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
+
+    // Resource packs get squashed first, so friends download less and the
+    // re-upload on every version costs less. Falls back to the original file
+    // whenever that is not possible.
+    if (PackSquash::canOptimize(fileType) && PackSquash::isAvailable()) {
+        setStatus(tr("Optimizing %1…").arg(fileName));
+        PackSquash::optimize(this, candidate->absPath, candidate->sha1, [this, url, onDone](QString pathToUpload) {
+            ModrinthShared::uploadFile(this, url, pathToUpload, onDone);
+        });
+        return;
+    }
+
     // Streamed from disk: four concurrent 200 MB jars used to mean 800 MB of
     // launcher memory during a push.
     ModrinthShared::uploadFile(this, url, candidate->absPath, onDone);

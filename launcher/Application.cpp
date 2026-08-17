@@ -776,6 +776,9 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
         // Update channel: also offer GitHub pre-releases when set
         m_settings->registerSetting("UpdaterBetaChannel", false);
+
+        // Shrink resource packs before uploading them to a shared instance
+        m_settings->registerSetting("OptimizeSharedPacks", true);
         m_settings->registerSetting("IgnoreJavaCompatibility", false);
         m_settings->registerSetting("IgnoreJavaWizard", false);
         auto defaultEnableAutoJava = m_settings->get("JavaPath").toString().isEmpty();

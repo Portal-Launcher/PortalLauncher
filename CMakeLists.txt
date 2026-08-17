@@ -363,6 +363,13 @@ if(NOT (UNIX AND APPLE))
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${Launcher_Portable_File}" DESTINATION "." COMPONENT portable EXCLUDE_FROM_ALL)
 endif()
 
+# PackSquash ships next to the launcher and shrinks resource packs before they
+# are uploaded to a shared instance. Fetched by tools/fetch-packsquash.ps1, so
+# it is optional here: builds without it simply skip pack optimization.
+if(WIN32)
+    install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/tools/packsquash/packsquash.exe" DESTINATION "." OPTIONAL)
+endif()
+
 if(UNIX AND APPLE)
     set(BINARY_DEST_DIR "${Launcher_Name}.app/Contents/MacOS")
     set(LIBRARY_DEST_DIR "${Launcher_Name}.app/Contents/MacOS")

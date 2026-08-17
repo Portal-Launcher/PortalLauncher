@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 
+#include "Application.h"
 #include "BaseInstance.h"
 #include "minecraft/MinecraftInstance.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
@@ -18,6 +19,7 @@
 #include "modplatform/modrinth/shared/ModrinthSharedPublishTask.h"
 #include "modplatform/modrinth/shared/ModrinthSharedSyncTask.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
+#include "tools/PackSquash.h"
 #include "ui/dialogs/ModrinthInviteFriendDialog.h"
 #include "ui/dialogs/ModrinthOptionalModsDialog.h"
 #include "ui/dialogs/ProgressDialog.h"
@@ -83,6 +85,14 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
         optionalRow->addStretch(1);
         box->addLayout(optionalRow);
 
+        m_optimizePacksCheck = new QCheckBox(tr("Shrink resource packs before uploading"), m_ownerBox);
+        m_optimizePacksCheck->setToolTip(
+            tr("Repacks resource packs so friends download less, typically around 40% smaller.\n"
+               "Nothing is lost: textures and sounds are untouched, only stored more efficiently.\n"
+               "Your own files are never modified."));
+        m_optimizePacksCheck->setVisible(PackSquash::isAvailable());
+        box->addWidget(m_optimizePacksCheck);
+
         auto* linkRow = new QHBoxLayout();
         m_inviteLinkEdit = new QLineEdit(m_ownerBox);
         m_inviteLinkEdit->setReadOnly(true);
@@ -142,6 +152,8 @@ ModrinthSharingPage::ModrinthSharingPage(BaseInstance* inst, QWidget* parent) : 
     connect(m_signInButton, &QPushButton::clicked, this, &ModrinthSharingPage::signInOrOut);
     connect(m_shareButton, &QPushButton::clicked, this, &ModrinthSharingPage::shareInstance);
     connect(m_pushButton, &QPushButton::clicked, this, &ModrinthSharingPage::pushUpdate);
+    connect(m_optimizePacksCheck, &QCheckBox::toggled, this,
+            [](bool checked) { APPLICATION->settings()->set("OptimizeSharedPacks", checked); });
     connect(m_optionalModsButton, &QPushButton::clicked, this, [this]() {
         if (auto* minecraftInstance = dynamic_cast<MinecraftInstance*>(m_instance)) {
             ModrinthOptionalModsDialog dialog(minecraftInstance, this);
@@ -250,6 +262,7 @@ void ModrinthSharingPage::refresh()
         }
         m_stateLabel->setText(state);
         m_autoPushCheck->setChecked(attachment->autoPush);
+        m_optimizePacksCheck->setChecked(APPLICATION->settings()->get("OptimizeSharedPacks").toBool());
         if (m_inviteLinkEdit->text().isEmpty() && !attachment->lastInviteLink.isEmpty())
             m_inviteLinkEdit->setText(attachment->lastInviteLink);
         m_copyLinkButton->setEnabled(!m_inviteLinkEdit->text().isEmpty());

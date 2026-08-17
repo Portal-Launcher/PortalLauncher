@@ -931,6 +931,10 @@ SET(LAUNCHER_SOURCES
     DiscordPresence.h
     DiscordPresence.cpp
 
+    # Bundled resource pack optimizer
+    tools/PackSquash.h
+    tools/PackSquash.cpp
+
     # GUI - paged dialog base
     ui/pages/BasePage.h
     ui/pages/BasePageContainer.h
