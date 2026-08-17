@@ -33,6 +33,7 @@
 #include "modplatform/helpers/HashUtils.h"
 #include "net/ApiDownload.h"
 #include "net/ChecksumValidator.h"
+#include "net/ContentCache.h"
 
 namespace {
 Net::ModrinthDownloadMeta createModrinthMeta(BaseInstance* instance, QString reason)
@@ -69,6 +70,18 @@ ResourceDownloadTask::ResourceDownloadTask(ModPlatform::IndexedPack::Ptr pack,
         connect(m_update_task.get(), &LocalResourceUpdateTask::hasOldResource, this, &ResourceDownloadTask::hasOldResource);
 
         addTask(m_update_task);
+    }
+
+    // Same file already downloaded for another instance? Serve it from the
+    // content cache and skip the network entirely.
+    const bool hasHash = !m_pack_version.hash_type.isEmpty() && !m_pack_version.hash.isEmpty();
+    const QString cachedPath = hasHash ? ContentCache::find(m_pack_version.hash_type, m_pack_version.hash) : QString();
+    if (!cachedPath.isEmpty()) {
+        auto copyTask = makeShared<ContentCache::CopyTask>(cachedPath, m_pack_model->dir().absoluteFilePath(getFilename()),
+                                                           m_pack_version.hash_type, m_pack_version.hash);
+        connect(copyTask.get(), &Task::succeeded, this, &ResourceDownloadTask::downloadSucceeded);
+        addTask(copyTask);
+        return;
     }
 
     m_filesNetJob.reset(new NetJob(tr("Resource download"), APPLICATION->network()));
@@ -109,6 +122,11 @@ ResourceDownloadTask::ResourceDownloadTask(ModPlatform::IndexedPack::Ptr pack,
 
 void ResourceDownloadTask::downloadSucceeded()
 {
+    // Remember the verified file for future installs of the same version.
+    // Nothing to do on a cache-served install: the entry already exists.
+    if (m_filesNetJob && !m_pack_version.hash_type.isEmpty() && !m_pack_version.hash.isEmpty())
+        ContentCache::store(m_pack_version.hash_type, m_pack_version.hash, m_pack_model->dir().absoluteFilePath(getFilename()));
+
     m_filesNetJob.reset();
     auto oldName = std::get<0>(to_delete);
     auto oldFilename = std::get<1>(to_delete);

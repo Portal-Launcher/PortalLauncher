@@ -117,6 +117,8 @@ set(NET_SOURCES
     # network stuffs
     net/ByteArraySink.h
     net/ChecksumValidator.h
+    net/ContentCache.cpp
+    net/ContentCache.h
     net/Download.cpp
     net/Download.h
     net/DummySink.h

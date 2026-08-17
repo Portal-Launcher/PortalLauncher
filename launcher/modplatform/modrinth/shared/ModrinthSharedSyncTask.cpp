@@ -17,7 +17,9 @@
 #include "ModrinthSharedApi.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
+#include "modplatform/helpers/HashUtils.h"
 #include "net/ChecksumValidator.h"
+#include "net/ContentCache.h"
 #include "net/Download.h"
 
 namespace {
@@ -441,9 +443,29 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
 
         // Updates to an optional mod this user turned off land as .disabled,
         // so the mod stays off without falling behind the pack.
-        auto download = Net::Download::makeFile(QUrl(target.url), keepDisabled ? absDisabled : abs);
-        if (!target.sha1.isEmpty())
+        const QString dest = keepDisabled ? absDisabled : abs;
+
+        // Friends install the same mods; serve repeat downloads from the
+        // local content cache when the hash matches.
+        if (!target.sha1.isEmpty()) {
+            const QString cached = ContentCache::find("sha1", target.sha1);
+            if (!cached.isEmpty()) {
+                if (Hashing::hash(cached, Hashing::Algorithm::Sha1).compare(target.sha1, Qt::CaseInsensitive) == 0) {
+                    if (QFile::exists(dest))
+                        QFile::remove(dest);
+                    if (FS::ensureFilePathExists(dest) && QFile::copy(cached, dest))
+                        continue;
+                } else {
+                    QFile::remove(cached);  // corrupted entry; fall through to a fresh download
+                }
+            }
+        }
+
+        auto download = Net::Download::makeFile(QUrl(target.url), dest);
+        if (!target.sha1.isEmpty()) {
             download->addValidator(new Net::ChecksumValidator(QCryptographicHash::Sha1, target.sha1));
+            m_downloadedFiles.append({ dest, target.sha1 });
+        }
         m_downloadJob->addNetAction(download);
         queued++;
     }
@@ -468,6 +490,12 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
 
 void ModrinthSharedSyncTask::afterDownloads()
 {
+    // Every download was hash-validated by the job; remember them for other
+    // instances and future joins.
+    for (const auto& downloaded : m_downloadedFiles)
+        ContentCache::store("sha1", downloaded.second, downloaded.first);
+    m_downloadedFiles.clear();
+
     applyConfigBundle([this]() { adoptOwnerIcon([this]() { finish(); }); });
 }
 

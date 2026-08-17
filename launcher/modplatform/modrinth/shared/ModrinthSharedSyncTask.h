@@ -11,6 +11,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPair>
 #include <QSet>
 #include <QTemporaryDir>
 
@@ -72,6 +73,7 @@ class ModrinthSharedSyncTask : public Task {
     QJsonArray m_resolvedProjects;
 
     QList<TargetFile> m_targets;
+    QList<QPair<QString, QString>> m_downloadedFiles;  // (path, sha1) fetched this run
     QString m_configBundleUrl;
     QString m_shareMetaUrl;
     QSet<QString> m_optionalProjects;
