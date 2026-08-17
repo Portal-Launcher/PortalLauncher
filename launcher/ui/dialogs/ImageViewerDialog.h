@@ -21,9 +21,11 @@
 #include <QHash>
 #include <QImage>
 
+#include "MediaUtils.h"
 #include "modplatform/ModIndex.h"
 
 class QLabel;
+class QMovie;
 class QToolButton;
 
 /** The image surface of the gallery lightbox: fills its whole area, supports
@@ -36,6 +38,7 @@ class ImageViewport final : public QWidget {
     explicit ImageViewport(QWidget* parent = nullptr);
 
     void setImage(const QImage& image);
+    void setFrame(const QImage& image);
     void setPlaceholderText(const QString& text);
 
     /** Scale-to-fit (never upscaling past 100%). */
@@ -88,6 +91,9 @@ class ImageViewerDialog final : public QDialog {
     void preloadAll();
     void decodeIfNeeded(int index);
     void evictFarImages();
+    void startAnimation(int index);
+    void stopAnimation();
+    void playCurrentVideo();
     void showImage(int index);
     void layoutOverlays();
     void updateOverlays();
@@ -102,12 +108,16 @@ class ImageViewerDialog final : public QDialog {
     QHash<int, QImage> m_loaded;        // decoded images near the current index
     QHash<int, QString> m_cachedPaths;  // downloaded cache file per gallery index
     QHash<int, bool> m_failed;          // indices whose download or decode failed
+    QHash<int, MediaUtils::Kind> m_mediaKinds;
+    QMovie* m_movie = nullptr;
+    int m_movieIndex = -1;
 
     ImageViewport* m_viewport;
     QToolButton* m_prevButton;
     QToolButton* m_nextButton;
     QLabel* m_counterLabel;
     QLabel* m_zoomLabel;
+    QToolButton* m_playButton;
     QWidget* m_captionBox;
     QLabel* m_titleLabel;
     QLabel* m_descriptionLabel;

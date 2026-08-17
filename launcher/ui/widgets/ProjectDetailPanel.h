@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <QHash>
 #include <QUrl>
 #include <QWidget>
 
@@ -28,6 +29,7 @@ class QLabel;
 class QTabWidget;
 class QListWidget;
 class QListWidgetItem;
+class QMovie;
 class QTreeWidget;
 class ProjectDescriptionPage;
 
@@ -77,12 +79,15 @@ class ProjectDetailPanel final : public QWidget {
     void rebuildGallery();
     void rebuildChangelog();
     void prefetchFullGallery();
+    void clearGalleryAnimations();
+    void startGalleryAnimation(int index, const QString& path, bool showPlayOverlay, int generation);
     void updateTabStates();
     void openImageViewer(int galleryIndex);
 
     /** Downloads an image through the meta cache and hands it back if the panel
      *  hasn't switched to another pack meanwhile. */
     void fetchImage(const QUrl& url, int generation, const std::function<void(const QImage&)>& onDone);
+    void fetchMediaFile(const QUrl& url, int generation, const std::function<void(const QString&)>& onDone);
 
    private:
     QString m_metaEntry = QStringLiteral("ResourceImages");
@@ -93,6 +98,7 @@ class ProjectDetailPanel final : public QWidget {
     int m_generation = 0;
     bool m_syncingSelection = false;
     bool m_galleryPrefetched = false;
+    QHash<int, QMovie*> m_galleryMovies;
 
     QWidget* m_header = nullptr;
     QLabel* m_iconLabel = nullptr;

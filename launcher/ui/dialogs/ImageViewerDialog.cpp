@@ -22,6 +22,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QMovie>
 #include <QPainter>
 #include <QScreen>
 #include <QTimer>
@@ -31,6 +32,8 @@
 #include <utility>
 
 #include "Application.h"
+#include "DesktopServices.h"
+#include "MediaUtils.h"
 #include "net/ApiDownload.h"
 #include "net/NetJob.h"
 
@@ -47,6 +50,13 @@ void ImageViewport::setImage(const QImage& image)
     m_image = image;
     m_placeholder.clear();
     zoomToFit();
+}
+
+void ImageViewport::setFrame(const QImage& image)
+{
+    m_image = image;
+    m_placeholder.clear();
+    update();
 }
 
 void ImageViewport::setPlaceholderText(const QString& text)
@@ -306,6 +316,16 @@ ImageViewerDialog::ImageViewerDialog(QWidget* parent, QList<ModPlatform::Gallery
     m_zoomLabel->setStyleSheet(OVERLAY_CHIP_QSS);
     m_zoomLabel->setToolTip(tr("Scroll to zoom, drag to pan, double-click to toggle 100%"));
 
+    m_playButton = new QToolButton(this);
+    m_playButton->setText(tr("▶  Play video"));
+    m_playButton->setCursor(Qt::PointingHandCursor);
+    m_playButton->setStyleSheet("QToolButton { background-color: rgba(12, 13, 16, 210); color: #f0f2f5; border: none;"
+                                "              border-radius: 22px; padding: 11px 20px; font-weight: 600; }"
+                                "QToolButton:hover { background-color: rgba(35, 38, 43, 240); }");
+    m_playButton->setFocusPolicy(Qt::NoFocus);
+    m_playButton->hide();
+    connect(m_playButton, &QToolButton::clicked, this, &ImageViewerDialog::playCurrentVideo);
+
     m_captionBox = new QWidget(this);
     m_captionBox->setStyleSheet("QWidget { background-color: rgba(12, 13, 16, 170); border-radius: 8px; }"
                                 "QLabel { background: transparent; }");
@@ -358,6 +378,11 @@ void ImageViewerDialog::preloadAll()
             continue;
         }
 
+        const auto urlKind = MediaUtils::kindFromUrl(url);
+        m_mediaKinds[i] = urlKind;
+        if (urlKind == MediaUtils::Kind::Video)
+            continue;
+
         auto entry = APPLICATION->metacache()->resolveEntry(
             m_metaEntry,
             QString("images/%1").arg(QString(QCryptographicHash::hash(url.toEncoded(), QCryptographicHash::Algorithm::Sha1).toHex())));
@@ -390,6 +415,12 @@ void ImageViewerDialog::decodeIfNeeded(int index)
 {
     if (m_loaded.contains(index) || m_failed.value(index, false) || !m_cachedPaths.contains(index))
         return;
+
+    const auto kind = MediaUtils::kindFromFile(m_cachedPaths.value(index), QUrl(m_images[index].url));
+    m_mediaKinds[index] = kind;
+    if (kind == MediaUtils::Kind::Video)
+        return;
+
     QImage image(m_cachedPaths.value(index));
     if (image.isNull())
         m_failed[index] = true;
@@ -408,6 +439,50 @@ void ImageViewerDialog::evictFarImages()
     }
 }
 
+void ImageViewerDialog::startAnimation(int index)
+{
+    if (m_movie != nullptr && m_movieIndex == index)
+        return;
+    stopAnimation();
+
+    if (!m_cachedPaths.contains(index))
+        return;
+    auto* movie = new QMovie(m_cachedPaths.value(index), QByteArray(), this);
+    if (!movie->isValid()) {
+        delete movie;
+        return;
+    }
+
+    m_movie = movie;
+    m_movieIndex = index;
+    movie->setCacheMode(QMovie::CacheNone);
+    connect(movie, &QMovie::frameChanged, this, [this, movie, index] {
+        if (index != m_index || movie != m_movie)
+            return;
+        const QImage frame = movie->currentImage();
+        if (!frame.isNull())
+            m_viewport->setFrame(frame);
+    });
+    movie->start();
+}
+
+void ImageViewerDialog::stopAnimation()
+{
+    if (m_movie != nullptr) {
+        m_movie->stop();
+        m_movie->deleteLater();
+    }
+    m_movie = nullptr;
+    m_movieIndex = -1;
+}
+
+void ImageViewerDialog::playCurrentVideo()
+{
+    if (m_index < 0 || m_index >= m_images.size())
+        return;
+    DesktopServices::openUrl(MediaUtils::watchableUrl(QUrl(m_images[m_index].url)));
+}
+
 void ImageViewerDialog::showImage(int index)
 {
     if (index < 0 || index >= m_images.size()) {
@@ -418,12 +493,23 @@ void ImageViewerDialog::showImage(int index)
     decodeIfNeeded(m_index);
     evictFarImages();
 
-    if (m_loaded.contains(m_index)) {
+    auto kind = m_mediaKinds.value(m_index, MediaUtils::kindFromUrl(QUrl(m_images[m_index].url)));
+    const bool video = kind == MediaUtils::Kind::Video;
+    if (video) {
+        stopAnimation();
+        m_viewport->setPlaceholderText(tr("This video will open in your default player."));
+    } else if (m_loaded.contains(m_index)) {
         m_viewport->setImage(m_loaded.value(m_index));
+        if (kind == MediaUtils::Kind::AnimatedImage)
+            startAnimation(m_index);
+        else
+            stopAnimation();
     } else if (m_failed.value(m_index, false)) {
+        stopAnimation();
         m_viewport->setPlaceholderText(tr("Could not load the image."));
     } else {
-        m_viewport->setPlaceholderText(tr("Loading image %1 of %2…").arg(m_index + 1).arg(m_images.size()));
+        stopAnimation();
+        m_viewport->setPlaceholderText(tr("Loading media %1 of %2…").arg(m_index + 1).arg(m_images.size()));
     }
 
     const auto& image = m_images[m_index];
@@ -448,9 +534,13 @@ void ImageViewerDialog::updateOverlays()
     m_counterLabel->setText(QString("%1 / %2").arg(m_index + 1).arg(m_images.size()));
     m_counterLabel->adjustSize();
 
+    const bool video = m_mediaKinds.value(m_index, MediaUtils::kindFromUrl(QUrl(m_images[m_index].url))) == MediaUtils::Kind::Video;
+    m_playButton->setVisible(video);
+    m_playButton->adjustSize();
     const int percent = qRound(m_viewport->currentScale() * 100.0);
     m_zoomLabel->setText(m_viewport->isFit() ? tr("Fit") : QStringLiteral("%1%").arg(percent));
     m_zoomLabel->adjustSize();
+    m_zoomLabel->setVisible(!video);
     layoutOverlays();
 }
 
@@ -464,6 +554,7 @@ void ImageViewerDialog::layoutOverlays()
     m_nextButton->move(area.right() - margin - m_nextButton->width(), area.center().y() - m_nextButton->height() / 2);
     m_counterLabel->move(area.left() + margin, area.top() + margin);
     m_zoomLabel->move(m_counterLabel->geometry().right() + 8, area.top() + margin);
+    m_playButton->move(area.center().x() - m_playButton->width() / 2, area.center().y() - m_playButton->height() / 2);
 
     if (m_captionBox->isVisible()) {
         const int captionWidth = qMin(int(area.width() * 0.7), 720);
@@ -472,7 +563,8 @@ void ImageViewerDialog::layoutOverlays()
     }
 
     for (QWidget* overlay : { static_cast<QWidget*>(m_prevButton), static_cast<QWidget*>(m_nextButton),
-                              static_cast<QWidget*>(m_counterLabel), static_cast<QWidget*>(m_zoomLabel), m_captionBox }) {
+                              static_cast<QWidget*>(m_counterLabel), static_cast<QWidget*>(m_zoomLabel),
+                              static_cast<QWidget*>(m_playButton), m_captionBox }) {
         overlay->raise();
     }
 }
@@ -496,9 +588,18 @@ void ImageViewerDialog::keyPressEvent(QKeyEvent* event)
         case Qt::Key_0:
             m_viewport->zoomToFit();
             return;
+        case Qt::Key_Space:
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            if (m_playButton->isVisible()) {
+                playCurrentVideo();
+                return;
+            }
+            break;
         default:
-            QDialog::keyPressEvent(event);
+            break;
     }
+    QDialog::keyPressEvent(event);
 }
 
 void ImageViewerDialog::resizeEvent(QResizeEvent* event)

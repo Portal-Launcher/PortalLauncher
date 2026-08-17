@@ -28,6 +28,7 @@
 #include <memory>
 
 #include "Application.h"
+#include "MediaUtils.h"
 
 #include "net/ApiDownload.h"
 #include "net/NetJob.h"
@@ -144,8 +145,7 @@ void VariableSizedImageObject::setupAnimation(const QUrl& url, const QString& pa
     if (m_movies.contains(key))
         return;
 
-    QImageReader reader(path);
-    if (!reader.supportsAnimation() || reader.imageCount() <= 1)
+    if (MediaUtils::kindFromFile(path, url) != MediaUtils::Kind::AnimatedImage)
         return;
 
     auto* movie = new QMovie(path, QByteArray(), this);

@@ -18,6 +18,8 @@
 
 #include "Markdown.h"
 
+#include "MediaUtils.h"
+
 #include <QObject>
 #include <QRegularExpression>
 
@@ -27,19 +29,7 @@ namespace {
 QString tagSource(const QString& tag)
 {
     static const QRegularExpression srcRegex(R"(\bsrc\s*=\s*["']?([^"'\s>]+))", QRegularExpression::CaseInsensitiveOption);
-    return srcRegex.match(tag).captured(1);
-}
-
-/** Turns embed player URLs into their normal watchable counterparts. */
-QString watchableUrl(QString url)
-{
-    static const QRegularExpression youtubeEmbed(R"(^(?:https?:)?//(?:www\.)?(?:youtube(?:-nocookie)?\.com)/embed/([A-Za-z0-9_-]+))",
-                                                 QRegularExpression::CaseInsensitiveOption);
-    if (auto match = youtubeEmbed.match(url); match.hasMatch())
-        return QString("https://www.youtube.com/watch?v=%1").arg(match.captured(1));
-    if (url.startsWith("//"))
-        url.prepend("https:");
-    return url;
+    return srcRegex.match(tag).captured(1).replace(QStringLiteral("&amp;"), QStringLiteral("&"));
 }
 
 /** QTextBrowser cannot render iframes or videos; they come out as glitchy
@@ -47,7 +37,7 @@ QString watchableUrl(QString url)
  */
 QString replaceMediaEmbeds(QString html)
 {
-    static const QRegularExpression embedRegex(R"((<iframe\b[^>]*>(?:(?!</iframe>).)*(?:</iframe>)?|<video\b[^>]*>(?:(?!</video>).)*(?:</video>)?))",
+    static const QRegularExpression embedRegex(R"((<iframe\b[^>]*>(?:(?!</iframe>).)*(?:</iframe>)?|<video\b[^>]*>(?:(?!</video>).)*(?:</video>)?|<img\b[^>]*>))",
                                                QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
 
     QString result;
@@ -59,15 +49,20 @@ QString replaceMediaEmbeds(QString html)
 
         const QString tag = match.captured();
         QString src = tagSource(tag);
+        const bool imageTag = tag.startsWith(QStringLiteral("<img"), Qt::CaseInsensitive);
         if (src.isEmpty()) {
             // <video><source src="..."></video> keeps the URL on the inner tag
             static const QRegularExpression sourceTag(R"(<source\b[^>]*>)", QRegularExpression::CaseInsensitiveOption);
             src = tagSource(sourceTag.match(tag).captured());
         }
 
-        if (!src.isEmpty()) {
+        // Normal image tags, including animated GIFs and WebP files, stay in
+        // the document and are handled by VariableSizedImageObject.
+        if (imageTag && MediaUtils::kindFromUrl(QUrl(src)) != MediaUtils::Kind::Video) {
+            result += tag;
+        } else if (!src.isEmpty()) {
             result += QString("<p>▶ <a href=\"%1\">%2</a></p>")
-                          .arg(watchableUrl(src).toHtmlEscaped(), QObject::tr("Watch video"));
+                          .arg(MediaUtils::watchableUrl(QUrl(src)).toString().toHtmlEscaped(), QObject::tr("Watch video"));
         }
         last = match.capturedEnd();
     }

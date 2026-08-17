@@ -41,8 +41,8 @@ class VariableSizedImageObject final : public QObject, public QTextObjectInterfa
         int posInDocument;
         QUrl url;
         QImage image;
-        int width;
-        int height;
+        int width = 0;
+        int height = 0;
         QVariant maxWidth;
     };
 

@@ -654,6 +654,8 @@ set(PRISMUPDATER_SOURCES
     Version.cpp
     Markdown.h
     Markdown.cpp
+    MediaUtils.h
+    MediaUtils.cpp
 
     # Zip
     MMCZip.h
@@ -836,6 +838,8 @@ SET(LAUNCHER_SOURCES
     # GUI - general utilities
     DesktopServices.h
     DesktopServices.cpp
+    MediaUtils.h
+    MediaUtils.cpp
     VersionProxyModel.h
     VersionProxyModel.cpp
     Markdown.h

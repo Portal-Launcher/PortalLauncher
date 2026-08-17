@@ -25,10 +25,13 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QListWidget>
+#include <QMovie>
+#include <QPainter>
 #include <QPixmapCache>
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include <utility>
 
 #include "settings/Setting.h"
 #include "settings/SettingsObject.h"
@@ -36,6 +39,7 @@
 #include "Application.h"
 #include "BuildConfig.h"
 #include "Markdown.h"
+#include "MediaUtils.h"
 #include "StringUtils.h"
 
 #include "net/ApiDownload.h"
@@ -88,6 +92,33 @@ QColor versionTypeColor(const ModPlatform::IndexedVersionType& type)
         default:
             return {};
     }
+}
+
+QPixmap galleryThumbnail(const QImage& image, const QSize& size, bool showPlayOverlay)
+{
+    QPixmap pixmap = QPixmap::fromImage(image.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    if (!showPlayOverlay || pixmap.isNull())
+        return pixmap;
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QPointF center = pixmap.rect().center();
+    const qreal radius = qMin(pixmap.width(), pixmap.height()) * 0.2;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(12, 13, 16, 190));
+    painter.drawEllipse(center, radius, radius);
+    painter.setBrush(QColor(240, 242, 245));
+    painter.drawPolygon(QPolygonF{ QPointF(center.x() - radius * 0.28, center.y() - radius * 0.5),
+                                   QPointF(center.x() - radius * 0.28, center.y() + radius * 0.5),
+                                   QPointF(center.x() + radius * 0.55, center.y()) });
+    return pixmap;
+}
+
+QPixmap videoPlaceholder(const QSize& size)
+{
+    QImage image(size, QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(35, 38, 43));
+    return galleryThumbnail(image, size, true);
 }
 
 }  // namespace
@@ -273,6 +304,7 @@ void ProjectDetailPanel::clear()
     m_description->clear();
     m_changelog->flush();
     m_changelog->clear();
+    clearGalleryAnimations();
     m_gallery->clear();
     m_versions->clear();
 
@@ -434,22 +466,21 @@ void ProjectDetailPanel::rebuildGallery()
 {
     const auto& gallery = m_pack->extraData.gallery;
 
-    // Re-selecting the same pack: the thumbnails are already in place, no
-    // need to re-decode and re-scale every image.
-    if (m_gallery->count() > 0 && m_gallery->count() == gallery.size())
-        return;
-
+    clearGalleryAnimations();
     m_gallery->clear();
 
     for (int i = 0; i < gallery.size(); i++) {
         const auto& image = gallery[i];
 
-        auto* item = new QListWidgetItem(image.title.isEmpty() ? tr("Screenshot %1").arg(i + 1) : image.title);
+        const auto fullKind = MediaUtils::kindFromUrl(QUrl(image.url));
+        const bool video = fullKind == MediaUtils::Kind::Video;
+        auto* item = new QListWidgetItem(image.title.isEmpty() ? (video ? tr("Video %1").arg(i + 1) : tr("Screenshot %1").arg(i + 1))
+                                                              : image.title);
         item->setData(Qt::UserRole, i);
         if (!image.description.isEmpty()) {
             item->setToolTip(image.description.toHtmlEscaped());
         }
-        item->setIcon(QIcon::fromTheme("screenshot-placeholder"));
+        item->setIcon(video ? QIcon(videoPlaceholder(m_gallery->iconSize())) : QIcon::fromTheme("screenshot-placeholder"));
         m_gallery->addItem(item);
 
         const int generation = m_generation;
@@ -458,25 +489,39 @@ void ProjectDetailPanel::rebuildGallery()
         const QString thumbKey = thumbUrl.toString() + "@thumb" + QString::number(m_gallery->iconSize().width());
 
         QPixmap cachedThumb;
-        if (QPixmapCache::find(thumbKey, &cachedThumb)) {
+        if (!video && QPixmapCache::find(thumbKey, &cachedThumb)) {
             item->setIcon(QIcon(cachedThumb));
             continue;
         }
+        if (video && MediaUtils::kindFromUrl(thumbUrl) == MediaUtils::Kind::Video)
+            continue;
 
-        auto applyThumb = [this, i, thumbKey](const QImage& img) {
+        auto applyThumb = [this, i, thumbKey, video](const QImage& img) {
             if (auto* thumbItem = m_gallery->item(i); thumbItem != nullptr && !img.isNull()) {
-                const QPixmap scaled =
-                    QPixmap::fromImage(img.scaled(m_gallery->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-                QPixmapCache::insert(thumbKey, scaled);
+                const QPixmap scaled = galleryThumbnail(img, m_gallery->iconSize(), video);
+                if (!video)
+                    QPixmapCache::insert(thumbKey, scaled);
                 thumbItem->setIcon(QIcon(scaled));
             }
         };
-        fetchImage(thumbUrl, generation, [this, generation, thumbUrl, fullUrl, applyThumb](const QImage& img) {
-            if (!img.isNull()) {
-                applyThumb(img);
-            } else if (fullUrl != thumbUrl) {
-                // The derived thumbnail URL may not exist; fall back to the full image
-                fetchImage(fullUrl, generation, applyThumb);
+        auto loadThumb = [this, i, generation, video, thumbUrl, applyThumb](const QString& path) {
+            const auto kind = MediaUtils::kindFromFile(path, thumbUrl);
+            if (kind == MediaUtils::Kind::AnimatedImage) {
+                startGalleryAnimation(i, path, video, generation);
+            } else if (kind == MediaUtils::Kind::Image) {
+                applyThumb(QImage(path));
+            } else if (kind == MediaUtils::Kind::Video) {
+                if (auto* thumbItem = m_gallery->item(i); thumbItem != nullptr)
+                    thumbItem->setIcon(QIcon(videoPlaceholder(m_gallery->iconSize())));
+            }
+        };
+        fetchMediaFile(thumbUrl, generation, [this, generation, thumbUrl, fullUrl, loadThumb](const QString& path) {
+            const auto kind = path.isEmpty() ? MediaUtils::Kind::Unknown : MediaUtils::kindFromFile(path, thumbUrl);
+            if (kind == MediaUtils::Kind::Image || kind == MediaUtils::Kind::AnimatedImage || kind == MediaUtils::Kind::Video) {
+                loadThumb(path);
+            } else if (fullUrl != thumbUrl && MediaUtils::kindFromUrl(fullUrl) != MediaUtils::Kind::Video) {
+                // A derived thumbnail may not exist. Fall back to the full image.
+                fetchMediaFile(fullUrl, generation, loadThumb);
             }
         });
     }
@@ -490,8 +535,45 @@ void ProjectDetailPanel::prefetchFullGallery()
 
     for (const auto& image : m_pack->extraData.gallery) {
         // cache-backed fetch; the result is discarded, the viewer reads the cache
-        fetchImage(QUrl(image.url), m_generation, [](const QImage&) {});
+        const QUrl url(image.url);
+        if (MediaUtils::kindFromUrl(url) != MediaUtils::Kind::Video)
+            fetchMediaFile(url, m_generation, [](const QString&) {});
     }
+}
+
+void ProjectDetailPanel::clearGalleryAnimations()
+{
+    for (auto* movie : std::as_const(m_galleryMovies)) {
+        movie->stop();
+        movie->deleteLater();
+    }
+    m_galleryMovies.clear();
+}
+
+void ProjectDetailPanel::startGalleryAnimation(int index, const QString& path, bool showPlayOverlay, int generation)
+{
+    if (auto* previous = m_galleryMovies.take(index); previous != nullptr) {
+        previous->stop();
+        previous->deleteLater();
+    }
+
+    auto* movie = new QMovie(path, QByteArray(), this);
+    if (!movie->isValid()) {
+        delete movie;
+        return;
+    }
+    movie->setCacheMode(QMovie::CacheNone);
+    connect(movie, &QMovie::frameChanged, this, [this, movie, index, showPlayOverlay, generation] {
+        if (generation != m_generation)
+            return;
+        if (auto* item = m_gallery->item(index); item != nullptr) {
+            const QImage frame = movie->currentImage();
+            if (!frame.isNull())
+                item->setIcon(QIcon(galleryThumbnail(frame, m_gallery->iconSize(), showPlayOverlay)));
+        }
+    });
+    m_galleryMovies.insert(index, movie);
+    movie->start();
 }
 
 void ProjectDetailPanel::updateVersions()
@@ -682,7 +764,13 @@ void ProjectDetailPanel::openImageViewer(int galleryIndex)
 
 void ProjectDetailPanel::fetchImage(const QUrl& url, int generation, const std::function<void(const QImage&)>& onDone)
 {
+    fetchMediaFile(url, generation, [onDone](const QString& path) { onDone(path.isEmpty() ? QImage() : QImage(path)); });
+}
+
+void ProjectDetailPanel::fetchMediaFile(const QUrl& url, int generation, const std::function<void(const QString&)>& onDone)
+{
     if (url.isEmpty()) {
+        onDone({});
         return;
     }
 
@@ -697,12 +785,12 @@ void ProjectDetailPanel::fetchImage(const QUrl& url, int generation, const std::
     auto fullPath = entry->getFullPath();
     connect(job, &NetJob::succeeded, this, [this, generation, fullPath, onDone] {
         if (generation == m_generation) {
-            onDone(QImage(fullPath));
+            onDone(fullPath);
         }
     });
     connect(job, &NetJob::failed, this, [this, generation, onDone](const QString&) {
         if (generation == m_generation) {
-            onDone(QImage());
+            onDone({});
         }
     });
     connect(job, &NetJob::finished, job, &NetJob::deleteLater);
