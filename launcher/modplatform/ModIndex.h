@@ -200,6 +200,12 @@ struct IndexedPack {
     bool extraDataLoaded = true;
     ExtraPackData extraData;
 
+    // UI cache for the search-result meta line ("N downloads · updated ...");
+    // the list view asks for it on every paint and layout pass.
+    QString metaLineCache;
+    qint64 metaLineDownloads = -2;      // -2 = cache never built
+    bool metaLineHadDate = false;
+
     // For internal use, not provided by APIs
     bool isVersionSelected(int index) const
     {

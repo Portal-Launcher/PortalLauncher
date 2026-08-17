@@ -105,5 +105,6 @@ class ProjectDetailPanel final : public QWidget {
     ProjectDescriptionPage* m_description;
     QListWidget* m_gallery;
     QTreeWidget* m_versions;
+    class QCheckBox* m_hideIncompatible = nullptr;
     ProjectDescriptionPage* m_changelog;
 };

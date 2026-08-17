@@ -86,14 +86,22 @@ auto ResourceModel::data(const QModelIndex& index, int role) const -> QVariant
         case UserDataTypes::DESCRIPTION:
             return pack->description;
         case UserDataTypes::META: {
-            QStringList parts;
-            if (pack->extraData.downloads >= 0) {
-                parts << tr("%1 downloads").arg(StringUtils::humanReadableCount(static_cast<double>(pack->extraData.downloads)));
+            // Rebuilt only when the inputs change: this role is queried per
+            // row per paint AND per sizeHint pass.
+            const bool hasDate = pack->extraData.dateModified.isValid();
+            if (pack->metaLineDownloads != pack->extraData.downloads || pack->metaLineHadDate != hasDate) {
+                QStringList parts;
+                if (pack->extraData.downloads >= 0) {
+                    parts << tr("%1 downloads").arg(StringUtils::humanReadableCount(static_cast<double>(pack->extraData.downloads)));
+                }
+                if (hasDate) {
+                    parts << tr("updated %1").arg(StringUtils::relativeTimeString(pack->extraData.dateModified));
+                }
+                pack->metaLineCache = parts.join(QStringLiteral("  ·  "));
+                pack->metaLineDownloads = pack->extraData.downloads;
+                pack->metaLineHadDate = hasDate;
             }
-            if (pack->extraData.dateModified.isValid()) {
-                parts << tr("updated %1").arg(StringUtils::relativeTimeString(pack->extraData.dateModified));
-            }
-            return parts.join(QStringLiteral("  ·  "));
+            return pack->metaLineCache;
         }
         case Qt::CheckStateRole:
             return pack->isAnyVersionSelected() ? Qt::Checked : Qt::Unchecked;

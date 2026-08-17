@@ -17,6 +17,7 @@
 
 #include "ProjectDetailPanel.h"
 
+#include <QCheckBox>
 #include <QCryptographicHash>
 #include <QHeaderView>
 #include <QIcon>
@@ -28,6 +29,9 @@
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include "settings/Setting.h"
+#include "settings/SettingsObject.h"
 
 #include "Application.h"
 #include "BuildConfig.h"
@@ -201,7 +205,23 @@ ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
         }
         emit versionPicked(current->data(0, Qt::UserRole).toInt());
     });
-    m_tabs->addTab(m_versions, tr("Versions"));
+
+    // The tree greys out incompatible versions; for projects with hundreds of
+    // versions this checkbox removes the wall of grey entirely.
+    auto* versionsTab = new QWidget(m_tabs);
+    auto* versionsLayout = new QVBoxLayout(versionsTab);
+    versionsLayout->setContentsMargins(0, 4, 0, 0);
+    versionsLayout->setSpacing(4);
+    m_hideIncompatible = new QCheckBox(tr("Hide versions that do not work on this instance"), versionsTab);
+    m_hideIncompatible->setChecked(
+        APPLICATION->settings()->getOrRegisterSetting("HideIncompatibleVersions", false)->get().toBool());
+    connect(m_hideIncompatible, &QCheckBox::toggled, this, [this](bool checked) {
+        APPLICATION->settings()->getOrRegisterSetting("HideIncompatibleVersions", false)->set(checked);
+        updateVersions();
+    });
+    versionsLayout->addWidget(m_hideIncompatible);
+    versionsLayout->addWidget(m_versions, 1);
+    m_tabs->addTab(versionsTab, tr("Versions"));
 
     // Room for descenders (the g in "Changelog" clips in document mode otherwise);
     // only vertical padding is set so the active theme keeps its own look.
@@ -488,8 +508,13 @@ void ProjectDetailPanel::updateVersions()
         installedVersion = m_model->getInstalledPackVersion(m_pack);
     }
 
+    const bool hideIncompatible = m_hideIncompatible != nullptr && m_hideIncompatible->isChecked();
     for (int i = 0; i < m_pack->versions.size(); i++) {
         const auto& version = m_pack->versions[i];
+
+        const bool compatible = m_model == nullptr || m_model->checkVersionFilters(version);
+        if (!compatible && hideIncompatible)
+            continue;
 
         auto name = version.version;
         if (installedVersion.isValid() && version.fileId == installedVersion) {
@@ -534,7 +559,7 @@ void ProjectDetailPanel::updateVersions()
         }
         item->setData(0, Qt::UserRole, i);
 
-        if (m_model != nullptr && !m_model->checkVersionFilters(version)) {
+        if (!compatible) {
             item->setDisabled(true);
             item->setToolTip(0, tr("Not compatible with this instance (loader or Minecraft version)"));
         }
