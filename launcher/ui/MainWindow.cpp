@@ -366,18 +366,38 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_searchBar->setClearButtonEnabled(true);
         m_searchBar->setMaximumWidth(240);
         ui->mainToolBar->addWidget(m_searchBar);
+
+        // A twin lives in the menu bar corner: with the menu-bar-instead-of-
+        // toolbar setting on, the toolbar (and its search box) is hidden, and
+        // Ctrl+F would otherwise type into an invisible widget.
+        m_menuSearchBar = new QLineEdit(this);
+        m_menuSearchBar->setPlaceholderText(tr("Search instances (Ctrl+F)"));
+        m_menuSearchBar->setClearButtonEnabled(true);
+        m_menuSearchBar->setMaximumWidth(240);
+        ui->menuBar->setCornerWidget(m_menuSearchBar, Qt::TopRightCorner);
+        m_menuSearchBar->setVisible(false);
+
         proxymodel->setFilterCaseSensitivity(Qt::CaseInsensitive);
-        connect(m_searchBar, &QLineEdit::textChanged, this,
-                [this](const QString& text) { proxymodel->setFilterFixedString(text); });
+        auto applySearch = [this](const QString& text) {
+            proxymodel->setFilterFixedString(text);
+            for (auto* other : { m_searchBar, m_menuSearchBar })
+                if (other->text() != text)
+                    other->setText(text);
+        };
+        connect(m_searchBar, &QLineEdit::textChanged, this, applySearch);
+        connect(m_menuSearchBar, &QLineEdit::textChanged, this, applySearch);
 
         auto* focusSearch = new QShortcut(QKeySequence::Find, this);
         connect(focusSearch, &QShortcut::activated, this, [this]() {
-            m_searchBar->setFocus();
-            m_searchBar->selectAll();
+            auto* bar = m_menuSearchBar->isVisible() ? m_menuSearchBar : m_searchBar;
+            bar->setFocus();
+            bar->selectAll();
         });
-        auto* clearSearch = new QShortcut(QKeySequence(Qt::Key_Escape), m_searchBar);
-        clearSearch->setContext(Qt::WidgetShortcut);
-        connect(clearSearch, &QShortcut::activated, m_searchBar, &QLineEdit::clear);
+        for (auto* bar : { m_searchBar, m_menuSearchBar }) {
+            auto* clearSearch = new QShortcut(QKeySequence(Qt::Key_Escape), bar);
+            clearSearch->setContext(Qt::WidgetShortcut);
+            connect(clearSearch, &QShortcut::activated, bar, &QLineEdit::clear);
+        }
     }
     // The cat background
     {

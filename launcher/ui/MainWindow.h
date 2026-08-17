@@ -259,6 +259,7 @@ class MainWindow : public QMainWindow {
     BaseInstance* m_selectedInstance = nullptr;
     class FriendsPanel* m_friendsPanel = nullptr;
     class QLineEdit* m_searchBar = nullptr;
+    class QLineEdit* m_menuSearchBar = nullptr;  // menu-bar corner twin, for when the toolbar is hidden
     void updateShareQuickActions();
     void updateResumeButton();
     QString m_currentInstIcon;
