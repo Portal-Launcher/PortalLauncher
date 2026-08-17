@@ -115,6 +115,14 @@ ManagedPackPage::ManagedPackPage(BaseInstance* inst, InstanceWindow* instance_wi
         openedImpl();
     });
 
+    // Unlink: turn a platform-managed pack back into a plain instance
+    auto* unlinkButton = new QPushButton(tr("Unlink from pack source…"), this);
+    unlinkButton->setToolTip(
+        tr("Stop tracking this instance as a managed modpack. The instance and its files stay; platform updates stop."));
+    if (auto* boxLayout = ui->packInformationBox->layout())
+        boxLayout->addWidget(unlinkButton);
+    connect(unlinkButton, &QPushButton::clicked, this, &ManagedPackPage::unlinkPack);
+
     connect(ui->changelogTextBrowser, &QTextBrowser::anchorClicked, this, [](const QUrl url) {
         if (url.scheme().isEmpty()) {
             auto querry =
@@ -189,6 +197,33 @@ QString ManagedPackPage::helpPage() const
 void ManagedPackPage::retranslate()
 {
     ui->retranslateUi(this);
+}
+
+void ManagedPackPage::unlinkPack()
+{
+    QString provider = m_inst->getManagedPackType();
+    if (provider == QLatin1String("flame"))
+        provider = tr("CurseForge");
+    else if (provider == QLatin1String("modrinth"))
+        provider = tr("Modrinth");
+    else if (provider.isEmpty())
+        provider = tr("its pack source");
+
+    auto response = CustomMessageBox::selectable(
+                        this, tr("Unlink pack?"),
+                        tr("This will stop tracking \"%1\" as a %2 modpack.\n\n"
+                           "The instance and all of its files stay exactly as they are, but the launcher will no longer "
+                           "offer pack updates for it, and the link cannot be restored from inside the launcher.\n\n"
+                           "Unlink it?")
+                            .arg(m_inst->name(), provider),
+                        QMessageBox::Warning, QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel)
+                        ->exec();
+    if (response != QMessageBox::Yes)
+        return;
+
+    m_inst->unlinkManagedPack();
+    if (m_container)
+        m_container->refreshContainer();
 }
 
 bool ManagedPackPage::shouldDisplay() const

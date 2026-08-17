@@ -183,6 +183,17 @@ ProjectDetailPanel::ProjectDetailPanel(QWidget* parent) : QWidget(parent)
     });
     m_tabs->addTab(m_versions, tr("Versions"));
 
+    // Room for descenders (the g in "Changelog" clips in document mode otherwise);
+    // only vertical padding is set so the active theme keeps its own look.
+    m_tabs->tabBar()->setStyleSheet(QStringLiteral("QTabBar::tab { padding-top: 4px; padding-bottom: 6px; }"));
+
+    // Start fetching the full-size gallery images as soon as the gallery is
+    // opened, so the image viewer is instant instead of loading per click.
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
+        if (m_tabs->widget(index) == m_gallery)
+            prefetchFullGallery();
+    });
+
     m_changelog = new ProjectDescriptionPage(m_tabs);
     m_changelog->setOpenExternalLinks(false);
     m_changelog->setOpenLinks(false);
@@ -213,6 +224,7 @@ void ProjectDetailPanel::clear()
     m_pack = nullptr;
     m_model = nullptr;
     m_selectedVersion = -1;
+    m_galleryPrefetched = false;
 
     m_header->hide();
     m_description->flush();
@@ -241,6 +253,7 @@ void ProjectDetailPanel::setPack(ModPlatform::IndexedPack::Ptr pack, ResourceDow
     m_model = model;
     if (!samePack) {
         m_selectedVersion = -1;
+        m_galleryPrefetched = false;
     }
 
     rebuildHeader();
@@ -255,6 +268,10 @@ void ProjectDetailPanel::setPack(ModPlatform::IndexedPack::Ptr pack, ResourceDow
     } else if (!m_tabs->isTabEnabled(m_tabs->currentIndex())) {
         m_tabs->setCurrentIndex(0);
     }
+
+    // If the gallery is already the visible tab, start its prefetch right away.
+    if (m_tabs->currentWidget() == m_gallery)
+        prefetchFullGallery();
 }
 
 void ProjectDetailPanel::rebuildHeader()
@@ -399,6 +416,18 @@ void ProjectDetailPanel::rebuildGallery()
                 fetchImage(fullUrl, generation, applyThumb);
             }
         });
+    }
+}
+
+void ProjectDetailPanel::prefetchFullGallery()
+{
+    if (m_galleryPrefetched || !m_pack)
+        return;
+    m_galleryPrefetched = true;
+
+    for (const auto& image : m_pack->extraData.gallery) {
+        // cache-backed fetch; the result is discarded, the viewer reads the cache
+        fetchImage(QUrl(image.url), m_generation, [](const QImage&) {});
     }
 }
 

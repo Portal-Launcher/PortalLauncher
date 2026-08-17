@@ -189,6 +189,19 @@ void BaseInstance::setManagedPack(const QString& type,
     m_settings->set("ManagedPackVersionName", version);
 }
 
+void BaseInstance::unlinkManagedPack()
+{
+    m_settings->set("ManagedPack", false);
+    m_settings->set("ManagedPackType", "");
+    m_settings->set("ManagedPackID", "");
+    m_settings->set("ManagedPackName", "");
+    m_settings->set("ManagedPackVersionID", "");
+    m_settings->set("ManagedPackVersionName", "");
+    m_settings->set("ManagedPackURL", "");
+    setUpdateAvailable(false);
+    setUpdateAvailableVersion(QString());
+}
+
 void BaseInstance::copyManagedPack(BaseInstance& other)
 {
     m_settings->set("ManagedPack", other.isManagedPack());

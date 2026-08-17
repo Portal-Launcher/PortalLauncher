@@ -167,6 +167,8 @@ class BaseInstance : public QObject {
     QString getManagedPackVersionName() const;
     void setManagedPack(const QString& type, const QString& id, const QString& name, const QString& versionId, const QString& version);
     void copyManagedPack(BaseInstance& other);
+    /** Clears the managed-pack link entirely; the instance becomes a plain custom instance. */
+    void unlinkManagedPack();
 
     virtual QStringList extraArguments();
 

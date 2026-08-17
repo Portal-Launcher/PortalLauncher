@@ -73,6 +73,7 @@ class ProjectDetailPanel final : public QWidget {
     void rebuildDescription();
     void rebuildGallery();
     void rebuildChangelog();
+    void prefetchFullGallery();
     void updateTabStates();
     void openImageViewer(int galleryIndex);
 
@@ -88,6 +89,7 @@ class ProjectDetailPanel final : public QWidget {
     int m_selectedVersion = -1;
     int m_generation = 0;
     bool m_syncingSelection = false;
+    bool m_galleryPrefetched = false;
 
     QWidget* m_header;
     QLabel* m_iconLabel;

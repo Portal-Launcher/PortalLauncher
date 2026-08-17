@@ -110,6 +110,8 @@ bool FriendsPanel::event(QEvent* event)
             child->update();
         }
         update();
+        // item colors (online green) are chosen per theme, so re-derive them
+        rebuild();
     }
     return QDockWidget::event(event);
 }
@@ -238,8 +240,12 @@ void FriendsPanel::rebuild()
             item->setToolTip(0, tr("You have \"%1\" installed - double-click to launch it and play along.")
                                     .arg(localInstanceName));
         }
-        if (f.online)
-            item->setForeground(0, QBrush(QColor(0x1b, 0xd9, 0x6a)));
+        if (f.online) {
+            // Online green, picked per theme so it stays readable on light and
+            // dark backgrounds alike.
+            const bool darkBase = m_tree->palette().color(QPalette::Base).lightness() < 128;
+            item->setForeground(0, QBrush(darkBase ? QColor(0x1b, 0xd9, 0x6a) : QColor(0x0f, 0x7d, 0x3e)));
+        }
     }
 
     // Keep section order: invites and requests first, then online, offline, sent.

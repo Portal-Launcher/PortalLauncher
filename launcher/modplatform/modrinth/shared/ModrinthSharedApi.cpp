@@ -6,6 +6,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QUrlQuery>
 
 #include "Application.h"
@@ -440,15 +441,24 @@ QString inviteLink(const QString& inviteId)
 
 QString parseInviteRef(const QString& ref)
 {
-    QString trimmed = ref.trimmed();
-    QUrl url(trimmed);
+    // Invite ids are plain base62; anything else never reaches the API.
+    static const QRegularExpression idPattern(QStringLiteral("^[0-9A-Za-z]{1,64}$"));
+
+    QString candidate = ref.trimmed();
+    QUrl url(candidate);
     if (url.isValid() && !url.host().isEmpty()) {
+        // Only trust share links that actually point at Modrinth; a link from
+        // any other site must not be treated as an invite.
+        const QString host = url.host().toLower();
+        if (host != QLatin1String("modrinth.com") && !host.endsWith(QLatin1String(".modrinth.com")))
+            return {};
         auto parts = url.path().split('/', Qt::SkipEmptyParts);
         int idx = parts.indexOf("share");
-        if (idx != -1 && idx + 1 < parts.size())
-            return parts[idx + 1];
+        if (idx == -1 || idx + 1 >= parts.size())
+            return {};
+        candidate = parts[idx + 1];
     }
-    return trimmed;
+    return idPattern.match(candidate).hasMatch() ? candidate : QString();
 }
 
 }  // namespace ModrinthShared

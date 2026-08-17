@@ -18,15 +18,17 @@
 #pragma once
 
 #include <QDialog>
+#include <QHash>
 #include <QImage>
 
 #include "modplatform/ModIndex.h"
 
 class QLabel;
-class QPushButton;
+class QToolButton;
 
-/** A simple in-app image viewer for project gallery images: full-size image,
- *  caption, and previous / next navigation. */
+/** A lightbox for project gallery images: full-size image, caption, and
+ *  previous / next navigation. All images preload in the background when the
+ *  dialog opens, so navigation is instant once they have arrived. */
 class ImageViewerDialog final : public QDialog {
     Q_OBJECT
 
@@ -38,6 +40,7 @@ class ImageViewerDialog final : public QDialog {
     void resizeEvent(QResizeEvent* event) override;
 
    private:
+    void preloadAll();
     void showImage(int index);
     void updatePixmap();
     void updateNavState();
@@ -45,15 +48,15 @@ class ImageViewerDialog final : public QDialog {
    private:
     QList<ModPlatform::GalleryImage> m_images;
     int m_index = 0;
-    int m_generation = 0;
     QString m_metaEntry;
 
-    QImage m_currentImage;
+    QHash<int, QImage> m_loaded;   // decoded full images by gallery index
+    QHash<int, bool> m_failed;     // indices whose download or decode failed
 
     QLabel* m_imageLabel;
     QLabel* m_titleLabel;
     QLabel* m_descriptionLabel;
     QLabel* m_counterLabel;
-    QPushButton* m_prevButton;
-    QPushButton* m_nextButton;
+    QToolButton* m_prevButton;
+    QToolButton* m_nextButton;
 };

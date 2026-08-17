@@ -98,6 +98,7 @@
 #include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QIcon>
+#include <QPixmapCache>
 #include <QLibraryInfo>
 #include <QList>
 #include <QNetworkAccessManager>
@@ -311,6 +312,10 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     // Don't quit on hiding the last window
     this->setQuitOnLastWindowClosed(false);
     this->setQuitLockEnabled(false);
+
+    // The default 10 MB pixmap cache thrashes with a big instance grid plus
+    // mod icons and gallery thumbnails; give it room so icons render once.
+    QPixmapCache::setCacheLimit(64 * 1024);
 
     // Commandline parsing
     QCommandLineParser parser;

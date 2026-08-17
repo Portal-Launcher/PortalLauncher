@@ -66,6 +66,10 @@ class ManagedPackPage : public QWidget, public BasePage {
     virtual void update() {};
     virtual void updateFromFile() {};
 
+    /** Asks for confirmation, then stops tracking this instance as a managed
+     *  pack. Files are untouched; platform updates stop being offered. */
+    void unlinkPack();
+
    protected slots:
     /** Does the necessary UI changes for when something failed.
      *
