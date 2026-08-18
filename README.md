@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo-darkmode.svg">
   <source media="(prefers-color-scheme: light)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo.svg">
@@ -6,9 +6,15 @@
 </picture>
 </p>
 
+<h1 align="center">Portal Launcher</h1>
+
 <p align="center">
-  Portal Launcher is a custom launcher for Minecraft built around playing modpacks <b>with friends</b>: Modrinth's shared instances and friends list are built straight into the launcher, so everyone stays on the same version of the pack automatically.<br />
-  <br />This is a <b>fork</b> of <a href="https://prismlauncher.org">Prism Launcher</a> and is <b>not</b> endorsed by it.
+  Portal Launcher is an <b>open-source Minecraft launcher</b> for sharing and automatically syncing modpacks <b>with friends</b>.<br />
+  Built on <a href="https://prismlauncher.org"><b>Prism Launcher</b></a>, Portal adds <b>Modrinth Shared Instances</b>, automatic modpack syncing, a friends list, CurseForge and Modrinth browsing, safer mod updates, and multiplayer-focused tools.
+  <br /><br />
+  Share a Minecraft modpack once, update it whenever you want, and Portal keeps everyone on the same <b>mods, configs, Minecraft version, and mod loader</b> automatically.
+  <br /><br />
+  Portal Launcher is a <b>fork</b> of Prism Launcher and is <b>not endorsed by or affiliated with</b> the Prism Launcher project.
 </p>
 
 ## Why does this exist?
