@@ -62,7 +62,7 @@ class PrismUpdaterApp : public QApplication {
 
     bool loadPrismVersionFromExe(const QString& exe_path);
 
-    void downloadReleasePage(const QString& api_url, int page);
+    void downloadReleasePage(const QString& api_url, int page, int attempt = 0);
     int parseReleasePage(const QByteArray* response);
 
     bool needUpdate(const GitHubRelease& release);

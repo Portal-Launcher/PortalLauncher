@@ -39,6 +39,7 @@
 #include <QNetworkRequest>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QTimer>
 #include <memory>
 
 #include <filesystem>
@@ -490,6 +491,46 @@ void PrismUpdaterApp::run()
     exit(0);
 }
 
+/** Files an update archive must contain, and that an installed copy must end up
+ *  with. Kept in one place so the check before installing and the check after
+ *  installing can never drift apart.
+ */
+static QStringList requiredPayloadFiles()
+{
+    auto app_exe_name = BuildConfig.LAUNCHER_APP_BINARY_NAME;
+    auto updater_exe_name = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
+#if defined Q_OS_WIN32
+    app_exe_name.append(".exe");
+    updater_exe_name.append(".exe");
+    return { app_exe_name, updater_exe_name, QStringLiteral("Qt6Core.dll"), QStringLiteral("platforms/qwindows.dll") };
+#else
+    return { QStringLiteral("bin/") + app_exe_name, QStringLiteral("bin/") + updater_exe_name };
+#endif
+}
+
+/** Reads a manifest into a list of relative paths, dropping anything that would
+ *  point outside the directory it belongs to.
+ */
+static QStringList readManifest(const QString& manifest_path)
+{
+    QStringList entries;
+    if (!QFileInfo(manifest_path).isFile())
+        return entries;
+    try {
+        const auto contents = QString::fromUtf8(FS::read(manifest_path));
+        for (const auto& line : contents.split(QChar::LineFeed)) {
+            const auto entry = line.trimmed();
+            if (entry.isEmpty())
+                continue;
+            if (entry.startsWith('/') || entry.contains(QStringLiteral("..")) || QDir::isAbsolutePath(entry))
+                continue;
+            entries.append(entry);
+        }
+    } catch (FS::FileSystemException&) {
+    }
+    return entries;
+}
+
 void PrismUpdaterApp::moveAndFinishUpdate(QDir target)
 {
     logUpdate("Finishing update process");
@@ -498,29 +539,22 @@ void PrismUpdaterApp::moveAndFinishUpdate(QDir target)
     this->thread()->sleep(2);
 
     auto manifest_path = FS::PathCombine(m_rootPath, "manifest.txt");
-    QFileInfo manifest(manifest_path);
 
     auto app_dir = QDir(m_rootPath);
 
-    QStringList file_list;
-    if (manifest.isFile()) {
-        // load manifest from file
-        logUpdate(tr("Reading manifest from %1").arg(manifest.absoluteFilePath()));
-        try {
-            auto contents = QString::fromUtf8(FS::read(manifest.absoluteFilePath()));
-            auto files = contents.split('\n');
-            for (auto file : files) {
-                file_list.append(file.trimmed());
-            }
-        } catch (FS::FileSystemException&) {
-        }
-    }
+    // Read before anything is overwritten: what the old install shipped, so
+    // files the new version no longer ships can be cleaned up afterwards.
+    const QStringList previous_file_list = readManifest(target.absoluteFilePath("manifest.txt"));
+
+    if (QFileInfo(manifest_path).isFile())
+        logUpdate(tr("Reading manifest from %1").arg(manifest_path));
+    QStringList file_list = readManifest(manifest_path);
 
     if (file_list.isEmpty()) {
         logUpdate(tr("Manifest empty, making best guess of the directory contents of %1").arg(m_rootPath));
-        // m_rootPath is the extracted replacement. The target has already had
-        // its managed files removed, so enumerating it omits the exact files
-        // that need to be restored (including the main executable).
+        // Enumerate the extracted replacement, not the target: the target is
+        // the thing being replaced, and listing it would install whatever the
+        // old version happened to have rather than what the new one ships.
         auto entries = app_dir.entryInfoList(QDir::NoDotAndDotDot | QDir::Files | QDir::Dirs);
         for (auto entry : entries) {
             if (entry.fileName() == ".prism_launcher_updater_unpack.marker")
@@ -588,62 +622,57 @@ void PrismUpdaterApp::moveAndFinishUpdate(QDir target)
 #endif
 
     auto app_exe_path = target.absoluteFilePath(app_exe_name);
-    auto updater_exe_name = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
-#if defined Q_OS_WIN32
-    updater_exe_name.append(".exe");
-#else
-    updater_exe_name.prepend("bin/");
-#endif
-    const auto updater_exe_path = target.absoluteFilePath(updater_exe_name);
 
-    if (!QFileInfo(app_exe_path).isFile() || !QFileInfo(updater_exe_path).isFile()) {
-        logUpdate(tr("The update did not install the required launcher executables."));
-        error = true;
-    }
-#if defined Q_OS_WIN32
-    const QStringList required_runtime_files = { "Qt6Core.dll", "platforms/qwindows.dll" };
-    for (const auto& required_file : required_runtime_files) {
+    // The install is overwritten in place and never emptied first, so even a
+    // half finished copy leaves a launcher that starts. Check anyway: a file
+    // missing here means the archive was wrong, and what is sitting in its
+    // place is the previous version's copy.
+    for (const auto& required_file : requiredPayloadFiles()) {
         if (!QFileInfo(target.absoluteFilePath(required_file)).isFile()) {
-            logUpdate(tr("The update did not install required runtime file %1.").arg(required_file));
+            logUpdate(tr("The update did not install required file %1.").arg(required_file));
             error = true;
         }
     }
-#endif
 
-    bool launched = false;
     if (!error) {
-        // The relaunched app checks these immediately, so publish success and
-        // remove the in-progress lock before starting it.
-        logUpdate(tr("Update succeeded."));
-        auto success_marker = FS::PathCombine(m_dataPath, ".prism_launcher_update.success");
-        FS::copy(m_updateLogPath, success_marker).overwrite(true)();
-        auto update_lock_path = FS::PathCombine(m_dataPath, ".prism_launcher_update.lock");
-        FS::deletePath(update_lock_path);
-
-        launched = proc.startDetached(app_exe_path);
-        if (!launched) {
-            logUpdate(tr("Failed to relaunch %1: %2").arg(app_exe_path, proc.errorString()));
-            FS::deletePath(success_marker);
-            error = true;
+        // Drop files the previous version shipped and this one does not.
+        for (const auto& stale_entry : previous_file_list) {
+            if (file_list.contains(stale_entry))
+                continue;
+            const auto stale_path = target.absoluteFilePath(stale_entry);
+            if (!QFileInfo(stale_path).isFile())
+                continue;
+            logUpdate(tr("Removing %1, which the new version no longer ships").arg(stale_path));
+            FS::deletePath(stale_path);
         }
     }
 
+    // The relaunched app reads these immediately, so settle them before it starts.
     if (error) {
-        logUpdate(tr("There were errors installing the update. Restoring the previous launcher."));
+        // Some of the new files landed and some did not. Put the backup back so
+        // the user ends up on the version they already had, not a mixture.
+        logUpdate(tr("There were errors installing the update. Restoring the previous version."));
         if (!restoreAppDirFromBackup(target.absolutePath()))
-            logUpdate(tr("Failed to restore the previous launcher from backup."));
-        auto fail_marker = FS::PathCombine(m_dataPath, ".prism_launcher_update.fail");
-        FS::copy(m_updateLogPath, fail_marker).overwrite(true)();
-
-        // If installation failed before launch, reopen the restored version.
-        if (!launched && QFileInfo(app_exe_path).isFile()) {
-            auto update_lock_path = FS::PathCombine(m_dataPath, ".prism_launcher_update.lock");
-            FS::deletePath(update_lock_path);
-            QProcess::startDetached(app_exe_path);
-        }
+            logUpdate(tr("Failed to restore the previous version from backup."));
+        FS::copy(m_updateLogPath, FS::PathCombine(m_dataPath, ".prism_launcher_update.fail")).overwrite(true)();
+    } else {
+        logUpdate(tr("Update succeeded."));
+        FS::copy(m_updateLogPath, FS::PathCombine(m_dataPath, ".prism_launcher_update.success")).overwrite(true)();
     }
-    auto update_lock_path = FS::PathCombine(m_dataPath, ".prism_launcher_update.lock");
-    FS::deletePath(update_lock_path);
+    FS::deletePath(FS::PathCombine(m_dataPath, ".prism_launcher_update.lock"));
+
+    if (QFileInfo(app_exe_path).isFile()) {
+        proc.setProgram(app_exe_path);
+        if (!proc.startDetached())
+            logUpdate(tr("Failed to relaunch %1: %2").arg(app_exe_path, proc.errorString()));
+    } else {
+        // Nothing left to start, which should be impossible now that the
+        // install is never emptied. Tell the user where the pieces are.
+        showFatalErrorMessage(tr("Update failed"),
+                              tr("The launcher is missing from %1 after the update. A copy of the previous version is in a backup folder "
+                                 "inside it, and the update log is at %2.")
+                                  .arg(target.absolutePath(), m_updateLogPath));
+    }
 
     exit(error ? 1 : 0);
 }
@@ -1030,21 +1059,8 @@ void PrismUpdaterApp::performInstall(QFileInfo file)
 void PrismUpdaterApp::unpackAndInstall(QFileInfo archive)
 {
     if (auto loc = unpackArchive(archive)) {
-        auto app_exe_name = BuildConfig.LAUNCHER_APP_BINARY_NAME;
-        auto updater_exe_name = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
-#if defined Q_OS_WIN32
-        app_exe_name.append(".exe");
-        updater_exe_name.append(".exe");
-#else
-        app_exe_name.prepend("bin/");
-        updater_exe_name.prepend("bin/");
-#endif
-        QStringList required_payload = { app_exe_name, updater_exe_name };
-#if defined Q_OS_WIN32
-        required_payload.append({ "Qt6Core.dll", "platforms/qwindows.dll" });
-#endif
         QStringList missing_payload;
-        for (const auto& required_file : required_payload) {
+        for (const auto& required_file : requiredPayloadFiles()) {
             if (!QFileInfo(loc->absoluteFilePath(required_file)).isFile())
                 missing_payload.append(required_file);
         }
@@ -1056,8 +1072,6 @@ void PrismUpdaterApp::unpackAndInstall(QFileInfo archive)
             return;
         }
 
-        // Only touch the working installation after a replacement has been
-        // extracted and its critical executables have been confirmed.
         logUpdate(tr("Backing up install"));
         backupAppDir();
 
@@ -1081,8 +1095,9 @@ void PrismUpdaterApp::unpackAndInstall(QFileInfo archive)
         logUpdate(tr("Starting new updater at '%1'").arg(new_updater_path));
         if (!proc.startDetached(new_updater_path, { "-d", m_dataPath }, loc.value().absolutePath())) {
             logUpdate(tr("Failed to launch '%1' %2").arg(new_updater_path).arg(proc.errorString()));
-            logUpdate(tr("Restoring the previous launcher after updater handoff failure."));
-            restoreAppDirFromBackup();
+            showFatalErrorMessage(tr("Update failed"),
+                                  tr("The updater could not hand over to the downloaded copy, so nothing was installed. Your launcher is "
+                                     "unchanged; try again or reinstall from the releases page."));
             return exit(10);
         }
         return exit();  // up to the new updater now
@@ -1138,6 +1153,13 @@ void PrismUpdaterApp::backupAppDir()
     auto backup_dir =
         FS::PathCombine(app_dir.absolutePath(),
                         QStringLiteral("backup_") + QString(m_prismVersion).replace(s_replaceRegex, QString("_")) + "-" + m_prismGitCommit);
+    // Backups are full copies of the install and nothing else prunes them.
+    for (const auto& stale_backup : app_dir.entryInfoList({ QStringLiteral("backup_*") }, QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (stale_backup.absoluteFilePath() == backup_dir)
+            continue;
+        logUpdate(tr("Removing older backup %1").arg(stale_backup.absoluteFilePath()));
+        FS::deletePath(stale_backup.absoluteFilePath());
+    }
     FS::ensureFolderPathExists(backup_dir);
     auto backup_marker_path = FS::PathCombine(m_dataPath, ".prism_launcher_update_backup_path.txt");
     FS::write(backup_marker_path, backup_dir.toUtf8());
@@ -1151,18 +1173,15 @@ void PrismUpdaterApp::backupAppDir()
 
     logUpdate(tr("Backing up install at %1").arg(m_rootPath));
 
+    // Copy only. The old install stays exactly where it is and gets overwritten
+    // file by file later, so there is never a moment where the launcher is gone.
     auto copy = [this, app_dir, backup_dir](QString to_bak_file) {
         auto rel_path = app_dir.relativeFilePath(to_bak_file);
         auto bak_path = FS::PathCombine(backup_dir, rel_path);
-        logUpdate(tr("Backing up and then removing %1").arg(to_bak_file));
+        logUpdate(tr("Backing up %1").arg(to_bak_file));
         FS::ensureFilePathExists(bak_path);
-        auto result = FS::copy(to_bak_file, bak_path).overwrite(true)();
-        if (!result) {
+        if (!FS::copy(to_bak_file, bak_path).overwrite(true)())
             logUpdate(tr("Failed to backup %1 to %2").arg(to_bak_file).arg(bak_path));
-        } else {
-            if (!FS::deletePath(to_bak_file))
-                logUpdate(tr("Failed to remove %1").arg(to_bak_file));
-        }
     };
 
     int i = 0;
@@ -1216,12 +1235,12 @@ bool PrismUpdaterApp::restoreAppDirFromBackup(const QString& targetPath)
 std::optional<QDir> PrismUpdaterApp::unpackArchive(QFileInfo archive)
 {
     auto temp_extract_path = FS::PathCombine(m_dataPath, "prism_launcher_update_release");
-    if (QDir(temp_extract_path).exists() && !FS::deleteContents(temp_extract_path)) {
-        logUpdate(tr("Failed to clear previous update extraction at %1").arg(temp_extract_path));
-        showFatalErrorMessage(tr("Failed to prepare update"),
-                              tr("The updater could not clear files left by a previous update attempt. Your existing installation was left untouched."));
-        return std::nullopt;
-    }
+    // Leftovers from an earlier attempt would otherwise be handed to the next
+    // updater as if they were part of this release. Failing to clear them is not
+    // fatal on its own: the extraction below overwrites them and the payload
+    // check afterwards catches anything that is actually broken.
+    if (QDir(temp_extract_path).exists() && !FS::deleteContents(temp_extract_path))
+        logUpdate(tr("Could not fully clear the previous update extraction at %1, continuing anyway").arg(temp_extract_path));
     FS::ensureFolderPathExists(temp_extract_path);
     auto tmp_extract_dir = QDir(temp_extract_path);
 
@@ -1306,8 +1325,11 @@ void PrismUpdaterApp::loadReleaseList()
     downloadReleasePage(api_url, 1);
 }
 
-void PrismUpdaterApp::downloadReleasePage(const QString& api_url, int page)
+void PrismUpdaterApp::downloadReleasePage(const QString& api_url, int page, int attempt)
 {
+    // GitHub hands out the odd 5xx from its edge; one bad second should not turn
+    // into "update check failed" in the user's face.
+    const int max_attempts = 3;
     int per_page = 30;
     auto page_url = QString("%1?per_page=%2&page=%3").arg(api_url).arg(QString::number(per_page)).arg(QString::number(page));
     auto [download, response] = Net::Download::makeByteArray(page_url);
@@ -1329,7 +1351,13 @@ void PrismUpdaterApp::downloadReleasePage(const QString& api_url, int page)
             run();
         }
     });
-    connect(download.get(), &Net::Download::failed, this, &PrismUpdaterApp::downloadError);
+    connect(download.get(), &Net::Download::failed, this, [this, api_url, page, attempt, max_attempts](QString reason) {
+        if (attempt + 1 >= max_attempts)
+            return downloadError(reason);
+        const int delay_ms = 1500 * (attempt + 1);
+        qWarning() << "Release list request failed:" << qPrintable(reason) << "- retrying in" << delay_ms << "ms";
+        QTimer::singleShot(delay_ms, this, [this, api_url, page, attempt]() { downloadReleasePage(api_url, page, attempt + 1); });
+    });
 
     m_current_task.reset(download);
     connect(download.get(), &Net::Download::finished, this, [this]() {
@@ -1413,5 +1441,7 @@ bool PrismUpdaterApp::needUpdate(const GitHubRelease& release)
 
 void PrismUpdaterApp::downloadError(QString reason)
 {
-    fail(QString("Network request Failed: %1 with reason %2").arg(m_current_url).arg(reason));
+    fail(tr("Could not reach GitHub to check for updates. This is usually temporary - check your connection and try again in a few minutes."
+            " (request: %1, reason: %2)")
+             .arg(m_current_url, reason));
 }

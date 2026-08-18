@@ -25,27 +25,9 @@ if (-not ($assets | Where-Object { $_.Name -like "*Windows-MSVC-$Version.zip.sha
     throw "Missing $($zip.Name).sha256 - the updater hard-fails without it"
 }
 
-# Defense in depth: refuse to publish an archive that could strand an existing
-# installation, even if it was produced or modified outside package-release.ps1.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
-try {
-    $archiveNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/').TrimStart('/') })
-    $requiredFiles = @("manifest.txt", "prismlauncher.exe", "prismlauncher_updater.exe", "Qt6Core.dll", "platforms/qwindows.dll")
-    foreach ($required in $requiredFiles) {
-        if ($archiveNames -notcontains $required) { throw "Refusing to publish unsafe update archive: $required is missing" }
-    }
-
-    $manifestEntry = $archive.Entries | Where-Object { $_.FullName.Replace('\', '/').TrimStart('/') -eq "manifest.txt" } | Select-Object -First 1
-    $reader = New-Object IO.StreamReader($manifestEntry.Open(), [Text.Encoding]::UTF8)
-    try { $archivedManifest = @($reader.ReadToEnd() -split "`r?`n" | Where-Object { $_ }) }
-    finally { $reader.Dispose() }
-    foreach ($required in $requiredFiles) {
-        if ($archivedManifest -notcontains $required) { throw "Refusing to publish unsafe update archive: manifest.txt does not list $required" }
-    }
-} finally {
-    $archive.Dispose()
-}
+# Defense in depth: the zip is checked again here, in case it was produced or
+# modified outside package-release.ps1.
+& (Join-Path $PSScriptRoot "verify-update-archive.ps1") -ZipPath $zip.FullName
 
 # --- token, via the credential helper (stdin must come from a file on PS 5.1) ---
 $inFile = [IO.Path]::GetTempFileName()

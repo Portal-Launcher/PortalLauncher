@@ -80,10 +80,9 @@ if (-not (Test-Path (Join-Path $installDir "packsquash.exe"))) {
 # portable.txt must never ship: it moves the data dir into the install folder
 Remove-Item (Join-Path $installDir "portable.txt") -Force -EA SilentlyContinue
 
-# The archive updater uses this manifest for both halves of its transaction:
-# first to back up/remove the old install, then to copy every extracted file
-# into place. Without it, older updaters guess from the partially emptied
-# destination and can leave the launcher executable missing.
+# The updater installs exactly what this manifest lists. Without it, it falls
+# back to guessing, which is how 1.0.3 and earlier could leave an install with
+# no launcher executable in it.
 $manifestPath = Join-Path $installDir "manifest.txt"
 $manifestEntries = @(
     Get-ChildItem $installDir -Recurse -File |
@@ -105,25 +104,7 @@ Write-Host "Creating $zipName..."
 Compress-Archive -Path (Join-Path $installDir "*") -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
 # Fail packaging before an unsafe archive can ever reach GitHub.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
-try {
-    $archiveNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/').TrimStart('/') })
-    $requiredFiles = @("manifest.txt", "prismlauncher.exe", "prismlauncher_updater.exe", "Qt6Core.dll", "platforms/qwindows.dll")
-    foreach ($required in $requiredFiles) {
-        if ($archiveNames -notcontains $required) { throw "Unsafe update archive: $required is missing from $zipName" }
-    }
-
-    $manifestEntry = $archive.Entries | Where-Object { $_.FullName.Replace('\', '/').TrimStart('/') -eq "manifest.txt" } | Select-Object -First 1
-    $reader = New-Object IO.StreamReader($manifestEntry.Open(), [Text.Encoding]::UTF8)
-    try { $archivedManifest = @($reader.ReadToEnd() -split "`r?`n" | Where-Object { $_ }) }
-    finally { $reader.Dispose() }
-    foreach ($required in $requiredFiles) {
-        if ($archivedManifest -notcontains $required) { throw "Unsafe update archive: manifest.txt does not list $required" }
-    }
-} finally {
-    $archive.Dispose()
-}
+& (Join-Path $PSScriptRoot "verify-update-archive.ps1") -ZipPath $zipPath
 
 # 5. installer
 $setupPath = Join-Path $outDir "PortalLauncher-Setup-$Version.exe"
