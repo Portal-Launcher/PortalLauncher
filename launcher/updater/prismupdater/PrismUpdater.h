@@ -80,6 +80,7 @@ class PrismUpdaterApp : public QApplication {
     void performInstall(QFileInfo file);
     void unpackAndInstall(QFileInfo file);
     void backupAppDir();
+    bool restoreAppDirFromBackup(const QString& targetPath = {});
     std::optional<QDir> unpackArchive(QFileInfo file);
 
     QFileInfo downloadAsset(const GitHubReleaseAsset& asset);
