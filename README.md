@@ -49,7 +49,7 @@ Found a bug or have a suggestion? Open a [GitHub issue](https://github.com/Tinsl
 
 ## Building
 
-Portal builds the same way Prism Launcher does. Follow the upstream [build instructions](https://prismlauncher.org/wiki/development/build-instructions/), cloning this repository instead. The launcher lives on the `shared-instances` branch.
+Portal builds the same way Prism Launcher does. Follow the upstream [build instructions](https://prismlauncher.org/wiki/development/build-instructions/), cloning this repository instead. The launcher lives on the `main` branch.
 
 ## License
 
