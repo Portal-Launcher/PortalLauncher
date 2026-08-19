@@ -1,0 +1,7 @@
+# Reference copy of the winget version manifest. The submitted copy lives in
+# microsoft/winget-pkgs; see ../README.md for how it gets there.
+PackageIdentifier: TinsleyDevers.PortalLauncher
+PackageVersion: 1.0.5
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.12.0

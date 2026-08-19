@@ -1,0 +1,52 @@
+# STARTER manifest for Flathub. This has never been through flatpak-builder,
+# and it will not build as-is: see ../README.md, the Flathub section, for the
+# two things that have to happen first (the app id rename, and pulling in the
+# shared module files that live in the Flathub repo rather than here).
+#
+# The shape follows flathub/org.prismlauncher.PrismLauncher, because Portal is
+# the same application with extra features, and their manifest is the proven
+# way to get this program running inside a Flatpak sandbox.
+
+id: io.github.tinsleydevers.PortalLauncher
+runtime: org.kde.Platform
+runtime-version: "6.10"
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+command: portallauncher
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=all
+  # Discord rich presence
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-download:ro
+
+modules:
+  # These come from the Flathub repository, not from this one. Copy them in
+  # from flathub/org.prismlauncher.PrismLauncher when setting the package up.
+  - shared-modules/cmark.yml
+  - shared-modules/tomlplusplus.yml
+  - shared-modules/libdecor.json
+  - shared-modules/glfw.yml
+  - shared-modules/gamemode.yml
+
+  - name: portallauncher
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DLauncher_BUILD_PLATFORM=flatpak
+      - -DLauncher_ENABLE_JAVA_DOWNLOADER=ON
+      # Flathub builds are not our release binaries, so the in-app updater has
+      # nothing to offer: Flatpak updates the app instead.
+      - -DLauncher_UPDATER_GITHUB_REPO=
+      - -DLauncher_BUILD_ARTIFACT=flatpak
+    sources:
+      - type: archive
+        url: https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-1.0.5.tar.gz
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"

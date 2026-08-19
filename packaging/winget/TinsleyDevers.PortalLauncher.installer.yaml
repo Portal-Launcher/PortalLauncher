@@ -1,0 +1,27 @@
+# Reference copy of the winget installer manifest.
+#
+# InstallerSha256 changes every release. Do not hand-edit it: wingetcreate (or
+# the auto-PR in .github/workflows/publish.yml) fills it in from the release.
+PackageIdentifier: TinsleyDevers.PortalLauncher
+PackageVersion: 1.0.5
+InstallerType: nullsoft
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-08-18
+AppsAndFeaturesEntries:
+  # The NSIS uninstall key is still the upstream common name, because the data
+  # folder and binary keep that name for compatibility with existing installs.
+  - ProductCode: PrismLauncher
+    DisplayName: Portal Launcher
+    Publisher: Portal Launcher Contributors
+    UpgradeCode: PrismLauncher
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-Setup-1.0.5.exe
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+ManifestType: installer
+ManifestVersion: 1.12.0

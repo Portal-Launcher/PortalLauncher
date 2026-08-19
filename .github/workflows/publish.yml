@@ -10,6 +10,11 @@ jobs:
   winget:
     name: Winget
 
+    # Needs a WINGET_TOKEN secret: a personal access token with public_repo
+    # scope, on an account that has forked microsoft/winget-pkgs. Without it
+    # this job fails and nothing else is affected. See packaging/README.md.
+    if: ${{ !github.event.release.prerelease }}
+
     permissions:
       contents: read
 
@@ -19,7 +24,9 @@ jobs:
       - name: Publish on Winget
         uses: vedantmgoyal2009/winget-releaser@v2
         with:
-          identifier: PrismLauncher.PrismLauncher
+          identifier: TinsleyDevers.PortalLauncher
           version: ${{ github.event.release.tag_name }}
-          installers-regex: 'PrismLauncher-Windows-MSVC(:?-arm64|-Legacy)?-Setup-.+\.exe$'
+          # Only the x64 installer for now. The arm64 Setup can join once the
+          # Windows arm64 build has proved itself in CI.
+          installers-regex: '^PortalLauncher-Setup-[\d.]+\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}

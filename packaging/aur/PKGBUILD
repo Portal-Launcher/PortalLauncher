@@ -1,0 +1,76 @@
+# Maintainer: Tinsley Devers <75707609+TinsleyDevers@users.noreply.github.com>
+#
+# Reference copy of the AUR package. The AUR holds its own git repo per
+# package; see ../README.md for how this gets published and updated.
+#
+# This packages the release AppImage rather than the portable tarball, and
+# installs everything under its own name, so it can never collide with the
+# prismlauncher package even though the binary inside is still called
+# prismlauncher for data folder compatibility.
+
+pkgname=portal-launcher-bin
+pkgver=1.0.5
+pkgrel=1
+pkgdesc="Minecraft launcher for playing modpacks with friends, built on Prism Launcher"
+arch=('x86_64' 'aarch64')
+url="https://github.com/TinsleyDevers/PortalLauncher"
+license=('GPL-3.0-only')
+depends=('fuse2' 'java-runtime')
+optdepends=('gamemode: gamemode support')
+provides=('portal-launcher')
+conflicts=('portal-launcher')
+options=('!strip')
+
+source_x86_64=("PortalLauncher-${pkgver}-x86_64.AppImage::${url}/releases/download/${pkgver}/PortalLauncher-Linux-x86_64.AppImage")
+source_aarch64=("PortalLauncher-${pkgver}-aarch64.AppImage::${url}/releases/download/${pkgver}/PortalLauncher-Linux-aarch64.AppImage")
+# Take these from the .sha256 published next to each asset on the release.
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+_appimage() {
+  if [[ $CARCH == aarch64 ]]; then
+    echo "PortalLauncher-${pkgver}-aarch64.AppImage"
+  else
+    echo "PortalLauncher-${pkgver}-x86_64.AppImage"
+  fi
+}
+
+prepare() {
+  chmod +x "$(_appimage)"
+  ./"$(_appimage)" --appimage-extract >/dev/null
+}
+
+package() {
+  install -d "${pkgdir}/opt/${pkgname}"
+  cp -a squashfs-root/. "${pkgdir}/opt/${pkgname}/"
+  chmod -R go-w "${pkgdir}/opt/${pkgname}"
+
+  # The AppImage root has symlinks pointing at the bundled desktop entry and
+  # icon; drop them and ship our own, named after this package, so nothing
+  # here conflicts with an installed prismlauncher.
+  rm -f "${pkgdir}/opt/${pkgname}"/*.desktop "${pkgdir}/opt/${pkgname}"/*.png
+
+  install -d "${pkgdir}/usr/bin"
+  ln -s "/opt/${pkgname}/AppRun" "${pkgdir}/usr/bin/portal-launcher"
+
+  install -Dm644 \
+    "squashfs-root/share/icons/hicolor/256x256/apps/org.prismlauncher.PrismLauncher.png" \
+    "${pkgdir}/usr/share/icons/hicolor/256x256/apps/portal-launcher.png"
+
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/portal-launcher.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Portal Launcher
+GenericName=Minecraft Launcher
+Comment=Play modpacks with friends, and keep everyone on the same version
+Exec=portal-launcher %u
+Icon=portal-launcher
+Categories=Game;
+Keywords=game;minecraft;modpack;modrinth;launcher;
+StartupWMClass=PrismLauncher
+Terminal=false
+DESKTOP
+
+  install -Dm644 "squashfs-root/share/licenses/PrismLauncher/COPYING.md" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/COPYING.md" 2>/dev/null || true
+}
