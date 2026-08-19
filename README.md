@@ -13,21 +13,6 @@
   Portal Launcher is a <b>fork</b> of Prism Launcher and is <b>not endorsed by or affiliated with</b> the Prism Launcher project.
 </p>
 
-## Security and privacy
-
-Portal handles your Minecraft account and your Modrinth account, so here is exactly what it does with them.
-
-- **Portal never sees your Microsoft password.** Signing in to Minecraft uses Microsoft's official device code flow, the same one Prism Launcher uses: the launcher shows you a short code, you type it on Microsoft's own sign-in page in your browser, and Microsoft hands the launcher a token. Your password is never typed into Portal and never passes through it.
-- **Modrinth sign-in happens in your browser.** Portal opens Modrinth's own sign-in page and receives a session token back. The token is stored in `prismlauncher.cfg` in your launcher data folder, the same file and the same way the Modrinth App and Prism store theirs, and it is only ever sent to `*.modrinth.com`. Sign out any time from the Sharing page of any instance.
-- **No telemetry, no analytics, no ads.** Portal does not phone home and there is nothing to opt out of. It talks to Microsoft and Mojang to sign you in and download the game, to Modrinth and CurseForge when you browse mods or sync a shared pack, to GitHub to check for launcher updates, and to Prism Launcher's metadata server for Minecraft version data. That is the entire list.
-- **The binaries here are built from this source, in public.** From 1.0.6 onwards every release is built by GitHub Actions from a specific commit and carries a signed build provenance attestation, so you do not have to take my word for what is in the download. With the [GitHub CLI](https://cli.github.com):
-
-  ```
-  gh attestation verify PortalLauncher-Setup-1.0.6.exe --repo Portal-Launcher/PortalLauncher
-  ```
-
-  Releases up to 1.0.5 were built on my own machine and have no attestation. Every release, old or new, ships a `.sha256` beside each file if you only want to confirm the download is intact.
-
 ## Why does this exist?
 
 Prism Launcher is a great launcher, but playing the same modpack with friends still means sending zips around, or everyone updating by hand and hoping the versions match. Modrinth built an official Shared Instances service for the Modrinth App; Portal brings that same service to a Prism-style launcher, along with a friends panel and the quality-of-life features that make shared packs actually pleasant to run. Packs shared from Portal work with the Modrinth App and vice versa, because it is the same service underneath.
@@ -61,6 +46,21 @@ Found a bug or have a suggestion? Open a [GitHub issue](https://github.com/Porta
 ## Building
 
 Portal builds the same way Prism Launcher does. Follow the upstream [build instructions](https://prismlauncher.org/wiki/development/build-instructions/), cloning this repository instead. The launcher lives on the `main` branch.
+
+## Security and privacy
+
+Portal handles your Minecraft account and your Modrinth account, so here is exactly what it does with them.
+
+- **Portal never sees your Microsoft password.** Signing in to Minecraft uses Microsoft's official device code flow, the same one Prism Launcher uses: the launcher shows you a short code, you type it on Microsoft's own sign-in page in your browser, and Microsoft hands the launcher a token. Your password is never typed into Portal and never passes through it.
+- **Modrinth sign-in happens in your browser.** Portal opens Modrinth's own sign-in page and receives a session token back. The token is stored in `prismlauncher.cfg` in your launcher data folder, the same file and the same way the Modrinth App and Prism store theirs, and it is only ever sent to `*.modrinth.com`. Sign out any time from the Sharing page of any instance.
+- **No telemetry, no analytics, no ads.** Portal does not phone home and there is nothing to opt out of. It talks to Microsoft and Mojang to sign you in and download the game, to Modrinth and CurseForge when you browse mods or sync a shared pack, to GitHub to check for launcher updates, and to Prism Launcher's metadata server for Minecraft version data. That is the entire list.
+- **The binaries here are built from this source, in public.** From 1.0.6 onwards every release is built by GitHub Actions from a specific commit and carries a signed build provenance attestation, so you do not have to take my word for what is in the download. With the [GitHub CLI](https://cli.github.com):
+
+  ```
+  gh attestation verify PortalLauncher-Setup-1.0.6.exe --repo Portal-Launcher/PortalLauncher
+  ```
+
+  Releases up to 1.0.5 were built on my own machine and have no attestation. Every release, old or new, ships a `.sha256` beside each file if you only want to confirm the download is intact.
 
 ## License
 
