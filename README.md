@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Portal Launcher" src="/program_info/portal-banner.png" width="55%">
+  <img alt="Portal Launcher" src="/program_info/PortalLauncherBanner2.png" width="55%">
 </p>
 
 <h1 align="center">Portal Launcher</h1>
