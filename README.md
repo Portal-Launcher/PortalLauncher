@@ -1,9 +1,5 @@
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo-darkmode.svg">
-  <source media="(prefers-color-scheme: light)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo.svg">
   <img alt="Portal Launcher" src="/program_info/portal-banner.png" width="55%">
-</picture>
 </p>
 
 <h1 align="center">Portal Launcher</h1>
@@ -16,6 +12,21 @@
   <br /><br />
   Portal Launcher is a <b>fork</b> of Prism Launcher and is <b>not endorsed by or affiliated with</b> the Prism Launcher project.
 </p>
+
+## Security and privacy
+
+Portal handles your Minecraft account and your Modrinth account, so here is exactly what it does with them.
+
+- **Portal never sees your Microsoft password.** Signing in to Minecraft uses Microsoft's official device code flow, the same one Prism Launcher uses: the launcher shows you a short code, you type it on Microsoft's own sign-in page in your browser, and Microsoft hands the launcher a token. Your password is never typed into Portal and never passes through it.
+- **Modrinth sign-in happens in your browser.** Portal opens Modrinth's own sign-in page and receives a session token back. The token is stored in `prismlauncher.cfg` in your launcher data folder, the same file and the same way the Modrinth App and Prism store theirs, and it is only ever sent to `*.modrinth.com`. Sign out any time from the Sharing page of any instance.
+- **No telemetry, no analytics, no ads.** Portal does not phone home and there is nothing to opt out of. It talks to Microsoft and Mojang to sign you in and download the game, to Modrinth and CurseForge when you browse mods or sync a shared pack, to GitHub to check for launcher updates, and to Prism Launcher's metadata server for Minecraft version data. That is the entire list.
+- **The binaries here are built from this source, in public.** Every release is built by GitHub Actions from a specific commit and carries a signed build provenance attestation. With the [GitHub CLI](https://cli.github.com) you can check a download really is what this repository built:
+
+  ```
+  gh attestation verify PortalLauncher-Setup-1.0.5.exe --repo TinsleyDevers/PortalLauncher
+  ```
+
+  Every file also has a `.sha256` next to it if you only want to confirm the download is intact.
 
 ## Why does this exist?
 
@@ -39,7 +50,7 @@ Everything else works exactly like Prism Launcher, and it reads the same data fo
 
 - **Installer (recommended):** download `PortalLauncher-Setup-*.exe` from the [latest release](https://github.com/TinsleyDevers/PortalLauncher/releases/latest) and run it. It installs for the current user only (no admin prompt), adds Start Menu and desktop shortcuts, and can be removed from Add or Remove Programs.
 - **Portable zip:** download `PortalLauncher-Windows-MSVC-*.zip`, unzip it anywhere, and run `prismlauncher.exe`. This is also what the in-app updater installs.
-- Windows SmartScreen may warn because the build is not signed: click "More info", then "Run anyway". Every release ships a `.sha256` file next to each download if you want to verify it.
+- Windows SmartScreen may warn because the build is not code signed yet: click "More info", then "Run anyway". If you would rather check the download than trust it, see [Security and privacy](#security-and-privacy) above: every file is built in public and can be verified against this repository.
 - If you already use Prism Launcher, Portal picks up your existing instances and accounts automatically.
 - Sign in with your Modrinth account from the Sharing page of any instance to start sharing.
 
