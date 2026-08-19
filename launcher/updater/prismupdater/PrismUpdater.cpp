@@ -1329,7 +1329,7 @@ void PrismUpdaterApp::downloadReleasePage(const QString& api_url, int page, int 
 {
     // GitHub hands out the odd 5xx from its edge; one bad second should not turn
     // into "update check failed" in the user's face.
-    const int max_attempts = 3;
+    constexpr int max_attempts = 3;
     int per_page = 30;
     auto page_url = QString("%1?per_page=%2&page=%3").arg(api_url).arg(QString::number(per_page)).arg(QString::number(page));
     auto [download, response] = Net::Download::makeByteArray(page_url);
@@ -1351,7 +1351,7 @@ void PrismUpdaterApp::downloadReleasePage(const QString& api_url, int page, int 
             run();
         }
     });
-    connect(download.get(), &Net::Download::failed, this, [this, api_url, page, attempt, max_attempts](QString reason) {
+    connect(download.get(), &Net::Download::failed, this, [this, api_url, page, attempt](QString reason) {
         if (attempt + 1 >= max_attempts)
             return downloadError(reason);
         const int delay_ms = 1500 * (attempt + 1);
