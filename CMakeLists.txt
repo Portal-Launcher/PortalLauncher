@@ -201,7 +201,13 @@ set(Launcher_UPDATER_GITHUB_REPO "https://github.com/TinsleyDevers/PortalLaunche
 
 # Name to help updater identify valid artifacts. Release assets must contain
 # this string (e.g. PortalLauncher-Windows-MSVC-1.0.0.zip).
-set(Launcher_BUILD_ARTIFACT "Windows-MSVC" CACHE STRING "Artifact name to help the updater identify valid artifacts." FORCE)
+# CI passes the platform in through ARTIFACT_NAME (see CMakePresets.json), and
+# that value has to win so every platform identifies itself correctly. A build
+# from this machine has no such value, so fall back to the Windows build we
+# have always shipped by hand.
+if(NOT Launcher_BUILD_ARTIFACT)
+    set(Launcher_BUILD_ARTIFACT "Windows-MSVC" CACHE STRING "Artifact name to help the updater identify valid artifacts." FORCE)
+endif()
 
 # The metadata server
 set(Launcher_META_URL "https://meta.prismlauncher.org/v1/" CACHE STRING "URL to fetch Launcher's meta files from.")
@@ -387,8 +393,13 @@ if(UNIX AND APPLE)
     set(MACOSX_BUNDLE_LONG_VERSION_STRING "${Launcher_VERSION_NAME}")
     set(MACOSX_BUNDLE_ICON_FILE ${Launcher_Name}.icns)
     set(MACOSX_BUNDLE_COPYRIGHT "${Launcher_Copyright_Mac}")
-    set(MACOSX_SPARKLE_UPDATE_PUBLIC_KEY "v55ZWWD6QlPoXGV6VLzOTZxZUggWeE51X8cRQyQh6vA=" CACHE STRING "Public key for Sparkle update feed")
-    set(MACOSX_SPARKLE_UPDATE_FEED_URL "https://prismlauncher.org/feed/appcast.xml" CACHE STRING "URL for Sparkle update feed")
+    # Left empty on purpose. These used to carry upstream Prism's appcast and
+    # signing key, which would have pointed macOS builds of Portal at Prism's
+    # update feed and offered our users an "update" that installs Prism
+    # Launcher. Portal has no appcast of its own yet, so macOS simply has no
+    # auto-updater; fill both of these in to turn it back on.
+    set(MACOSX_SPARKLE_UPDATE_PUBLIC_KEY "" CACHE STRING "Public key for Sparkle update feed" FORCE)
+    set(MACOSX_SPARKLE_UPDATE_FEED_URL "" CACHE STRING "URL for Sparkle update feed" FORCE)
 
     set(MACOSX_SPARKLE_DOWNLOAD_URL "https://github.com/sparkle-project/Sparkle/releases/download/2.8.0/Sparkle-2.8.0.tar.xz" CACHE STRING "URL to Sparkle release archive")
     set(MACOSX_SPARKLE_SHA256 "fd5681ee92bf238aaac2d08214ceaf0cc8976e452d7f882d80bac1e61581f3b1" CACHE STRING "SHA256 checksum for Sparkle release archive")

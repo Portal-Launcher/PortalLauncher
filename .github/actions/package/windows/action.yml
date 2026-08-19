@@ -1,5 +1,5 @@
 name: Package for Windows
-description: Create a Windows package for Prism Launcher
+description: Create a Windows package for Portal Launcher
 
 inputs:
   version:
@@ -24,11 +24,22 @@ inputs:
   azure-subscription-id:
     description: Subscription ID for the Azure Signer Application
     required: true
+  azure-signing-account:
+    description: Trusted Signing account name
+    required: false
+  azure-cert-profile:
+    description: Trusted Signing certificate profile name
+    required: false
 
 runs:
   using: composite
 
   steps:
+    - name: Fetch PackSquash
+      shell: pwsh
+      run: |
+        pwsh -File tools/fetch-packsquash.ps1
+
     - name: Package (MinGW)
       if: ${{ inputs.msystem != '' }}
       shell: msys2 {0}
@@ -51,7 +62,7 @@ runs:
 
         cd ${{ github.workspace }}
 
-        Get-ChildItem ${{ env.INSTALL_DIR }} -Recurse | ForEach FullName | Resolve-Path -Relative | %{ $_.TrimStart('.\') } | %{ $_.TrimStart('${{ env.INSTALL_DIR }}') } | %{ $_.TrimStart('\') } | Out-File -FilePath ${{ env.INSTALL_DIR }}/manifest.txt
+        pwsh -File tools/write-manifest.ps1 -Root ${{ env.INSTALL_DIR }}
 
     - name: Emit warning for unsigned builds
       if: ${{ env.CI_HAS_ACCESS_TO_AZURE == '' || inputs.azure-client-id == '' }}
@@ -72,8 +83,8 @@ runs:
       uses: azure/artifact-signing-action@v1
       with:
         endpoint: https://eus.codesigning.azure.net/
-        trusted-signing-account-name: PrismLauncher
-        certificate-profile-name: PrismLauncher
+        trusted-signing-account-name: ${{ inputs.azure-signing-account }}
+        certificate-profile-name: ${{ inputs.azure-cert-profile }}
         files-folder: ${{ github.workspace }}\install\
         files-folder-filter: dll,exe
         files-folder-recurse: true
@@ -117,7 +128,7 @@ runs:
         cp -r ${{ env.INSTALL_DIR }} ${{ env.INSTALL_PORTABLE_DIR }}  # cmake install on Windows is slow, let's just copy instead
         cmake --install ${{ env.BUILD_DIR }} --config ${{ inputs.build-type }} --prefix ${{ env.INSTALL_PORTABLE_DIR }} --component portable
 
-        Get-ChildItem ${{ env.INSTALL_PORTABLE_DIR }} -Recurse | ForEach FullName | Resolve-Path -Relative | %{ $_.TrimStart('.\') } | %{ $_.TrimStart('${{ env.INSTALL_PORTABLE_DIR }}') } | %{ $_.TrimStart('\') } | Out-File -FilePath ${{ env.INSTALL_DIR }}/manifest.txt
+        pwsh -File tools/write-manifest.ps1 -Root ${{ env.INSTALL_PORTABLE_DIR }}
 
     - name: Package (installer)
       shell: pwsh
@@ -145,8 +156,8 @@ runs:
       uses: azure/artifact-signing-action@v1
       with:
         endpoint: https://eus.codesigning.azure.net/
-        trusted-signing-account-name: PrismLauncher
-        certificate-profile-name: PrismLauncher
+        trusted-signing-account-name: ${{ inputs.azure-signing-account }}
+        certificate-profile-name: ${{ inputs.azure-cert-profile }}
 
         files: |
           ${{ github.workspace }}\PrismLauncher-Setup.exe
@@ -170,17 +181,17 @@ runs:
     - name: Upload binary zip
       uses: actions/upload-artifact@v7
       with:
-        name: PrismLauncher-${{ inputs.artifact-name }}-${{ inputs.version }}-${{ inputs.build-type }}
+        name: PortalLauncher-${{ inputs.artifact-name }}-${{ inputs.version }}-${{ inputs.build-type }}
         path: install/**
 
     - name: Upload portable zip
       uses: actions/upload-artifact@v7
       with:
-        name: PrismLauncher-${{ inputs.artifact-name }}-Portable-${{ inputs.version }}-${{ inputs.build-type }}
+        name: PortalLauncher-${{ inputs.artifact-name }}-Portable-${{ inputs.version }}-${{ inputs.build-type }}
         path: install-portable/**
 
     - name: Upload installer
       uses: actions/upload-artifact@v7
       with:
-        name: PrismLauncher-${{ inputs.artifact-name }}-Setup-${{ inputs.version }}-${{ inputs.build-type }}
+        name: PortalLauncher-${{ inputs.artifact-name }}-Setup-${{ inputs.version }}-${{ inputs.build-type }}
         path: PrismLauncher-Setup.exe

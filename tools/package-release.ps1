@@ -80,19 +80,9 @@ if (-not (Test-Path (Join-Path $installDir "packsquash.exe"))) {
 # portable.txt must never ship: it moves the data dir into the install folder
 Remove-Item (Join-Path $installDir "portable.txt") -Force -EA SilentlyContinue
 
-# The updater installs exactly what this manifest lists. Without it, it falls
-# back to guessing, which is how 1.0.3 and earlier could leave an install with
-# no launcher executable in it.
-$manifestPath = Join-Path $installDir "manifest.txt"
-$manifestEntries = @(
-    Get-ChildItem $installDir -Recurse -File |
-        Where-Object { $_.FullName -ne $manifestPath } |
-        ForEach-Object { $_.FullName.Substring($installDir.Length).TrimStart('\', '/').Replace('\', '/') }
-)
-$manifestEntries += "manifest.txt"
-$manifestEntries = $manifestEntries | Sort-Object -Unique
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[IO.File]::WriteAllText($manifestPath, (($manifestEntries -join "`n") + "`n"), $utf8NoBom)
+# The updater installs exactly what this manifest lists. Written by the same
+# script CI uses, so a hand-built zip and a CI-built zip stay identical.
+& (Join-Path $PSScriptRoot "write-manifest.ps1") -Root $installDir
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 Get-ChildItem $outDir -File | Remove-Item -Force -EA SilentlyContinue

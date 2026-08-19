@@ -1,5 +1,5 @@
 name: Setup Dependencies
-description: Install and setup dependencies for building Prism Launcher
+description: Install and setup dependencies for building Portal Launcher
 
 inputs:
   build-type:
@@ -77,5 +77,5 @@ runs:
       with:
         aqtversion: "==3.1.*"
         version: ${{ inputs.qt-version }}
-        modules: qtimageformats qtnetworkauth
+        modules: qtimageformats qtnetworkauth qtwebsockets
         cache: ${{ inputs.build-type == 'Debug' }}
