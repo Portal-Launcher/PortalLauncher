@@ -2,7 +2,7 @@
 #
 # InstallerSha256 changes every release. Do not hand-edit it: wingetcreate (or
 # the auto-PR in .github/workflows/publish.yml) fills it in from the release.
-PackageIdentifier: TinsleyDevers.PortalLauncher
+PackageIdentifier: PortalLauncher.PortalLauncher
 PackageVersion: 1.0.5
 InstallerType: nullsoft
 Scope: user
@@ -21,7 +21,7 @@ AppsAndFeaturesEntries:
     UpgradeCode: PrismLauncher
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-Setup-1.0.5.exe
+    InstallerUrl: https://github.com/Portal-Launcher/PortalLauncher/releases/download/1.0.5/PortalLauncher-Setup-1.0.5.exe
     InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
 ManifestType: installer
 ManifestVersion: 1.12.0

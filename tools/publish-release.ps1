@@ -8,7 +8,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [Parameter(Mandatory = $true)][string]$NotesFile,
-    [string]$Repo = "TinsleyDevers/PortalLauncher"
+    [string]$Repo = "Portal-Launcher/PortalLauncher"
 )
 
 $ErrorActionPreference = "Stop"

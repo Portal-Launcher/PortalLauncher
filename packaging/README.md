@@ -19,13 +19,13 @@ named the way `.github/workflows/release.yml` names them.
 
 ## winget
 
-Package identifier: `TinsleyDevers.PortalLauncher`
+Package identifier: `PortalLauncher.PortalLauncher`
 
 **First submission, once:**
 
 ```
 winget install Microsoft.WingetCreate
-wingetcreate new https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-Setup-1.0.5.exe
+wingetcreate new https://github.com/Portal-Launcher/PortalLauncher/releases/download/1.0.5/PortalLauncher-Setup-1.0.5.exe
 ```
 
 `wingetcreate` downloads the installer, works out the hashes, prompts through
@@ -123,15 +123,19 @@ The rename is smaller than it looks, and safe:
 - It does **not** touch the data folder. That is `Launcher_CommonName`
   (`PrismLauncher`), which is what makes Portal read an existing Prism install,
   and it stays exactly as it is.
-- So: change that one line to `io.github.tinsleydevers.PortalLauncher`, rename
+- So: change that one line to `io.github.portal_launcher.PortalLauncher`, rename
   the six `program_info/org.prismlauncher.PrismLauncher.*` files to match
   (`.desktop.in`, `.metainfo.xml.in`, `.mime.xml`, `.svg`, `_256.png`, and the
   Social/Source svgs if you want them consistent), and update the three
   hardcoded names in the AppImage step of
   `.github/actions/package/linux/action.yml`.
 - Windows is completely unaffected. Nothing on Windows reads the app id.
+- The underscore is not a typo: Flathub derives the id from the GitHub account
+  that owns the Pages site, and normalises the hyphen in `Portal-Launcher` to
+  an underscore. Worth confirming with the reviewers on the submission PR
+  rather than guessing, since the id cannot be changed afterwards.
 
-Once that is done, `flathub/io.github.tinsleydevers.PortalLauncher.yml` is a
+Once that is done, `flathub/io.github.portal_launcher.PortalLauncher.yml` is a
 starting point, not a working manifest. The realistic path is to fork
 [flathub/org.prismlauncher.PrismLauncher](https://github.com/flathub/org.prismlauncher.PrismLauncher),
 swap the id, source and metadata for Portal's, keep their module files (cmark,

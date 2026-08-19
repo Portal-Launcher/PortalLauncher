@@ -1,7 +1,7 @@
 {
     "version": "1.0.5",
     "description": "A Minecraft launcher for playing modpacks with friends, built on Prism Launcher.",
-    "homepage": "https://github.com/TinsleyDevers/PortalLauncher",
+    "homepage": "https://github.com/Portal-Launcher/PortalLauncher",
     "license": "GPL-3.0-only",
     "notes": [
         "Portal keeps its data in %APPDATA%\\PrismLauncher, so an existing Prism Launcher",
@@ -9,7 +9,7 @@
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-Windows-MSVC-1.0.5.zip",
+            "url": "https://github.com/Portal-Launcher/PortalLauncher/releases/download/1.0.5/PortalLauncher-Windows-MSVC-1.0.5.zip",
             "hash": "0000000000000000000000000000000000000000000000000000000000000000"
         }
     },
@@ -21,12 +21,12 @@
         ]
     ],
     "checkver": {
-        "github": "https://github.com/TinsleyDevers/PortalLauncher"
+        "github": "https://github.com/Portal-Launcher/PortalLauncher"
     },
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/TinsleyDevers/PortalLauncher/releases/download/$version/PortalLauncher-Windows-MSVC-$version.zip"
+                "url": "https://github.com/Portal-Launcher/PortalLauncher/releases/download/$version/PortalLauncher-Windows-MSVC-$version.zip"
             }
         },
         "hash": {

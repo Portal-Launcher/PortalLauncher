@@ -7,11 +7,11 @@ cask "portal-launcher" do
   version "1.0.5"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/TinsleyDevers/PortalLauncher/releases/download/#{version}/PortalLauncher-macOS-#{version}.zip",
-      verified: "github.com/TinsleyDevers/PortalLauncher/"
+  url "https://github.com/Portal-Launcher/PortalLauncher/releases/download/#{version}/PortalLauncher-macOS-#{version}.zip",
+      verified: "github.com/Portal-Launcher/PortalLauncher/"
   name "Portal Launcher"
   desc "Minecraft launcher for playing modpacks with friends"
-  homepage "https://github.com/TinsleyDevers/PortalLauncher"
+  homepage "https://github.com/Portal-Launcher/PortalLauncher"
 
   livecheck do
     url :url

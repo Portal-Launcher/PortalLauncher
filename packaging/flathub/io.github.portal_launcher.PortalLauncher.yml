@@ -7,7 +7,7 @@
 # the same application with extra features, and their manifest is the proven
 # way to get this program running inside a Flatpak sandbox.
 
-id: io.github.tinsleydevers.PortalLauncher
+id: io.github.portal_launcher.PortalLauncher
 runtime: org.kde.Platform
 runtime-version: "6.10"
 sdk: org.kde.Sdk
@@ -48,5 +48,5 @@ modules:
       - -DLauncher_BUILD_ARTIFACT=flatpak
     sources:
       - type: archive
-        url: https://github.com/TinsleyDevers/PortalLauncher/releases/download/1.0.5/PortalLauncher-1.0.5.tar.gz
+        url: https://github.com/Portal-Launcher/PortalLauncher/releases/download/1.0.5/PortalLauncher-1.0.5.tar.gz
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"

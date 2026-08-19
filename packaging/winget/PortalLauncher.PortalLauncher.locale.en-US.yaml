@@ -1,14 +1,14 @@
 # Reference copy of the winget locale manifest.
-PackageIdentifier: TinsleyDevers.PortalLauncher
+PackageIdentifier: PortalLauncher.PortalLauncher
 PackageVersion: 1.0.5
 PackageLocale: en-US
-Publisher: Tinsley Devers
-PublisherUrl: https://github.com/TinsleyDevers
-PublisherSupportUrl: https://github.com/TinsleyDevers/PortalLauncher/issues
+Publisher: Portal Launcher
+PublisherUrl: https://github.com/Portal-Launcher
+PublisherSupportUrl: https://github.com/Portal-Launcher/PortalLauncher/issues
 PackageName: Portal Launcher
-PackageUrl: https://github.com/TinsleyDevers/PortalLauncher
+PackageUrl: https://github.com/Portal-Launcher/PortalLauncher
 License: GPL-3.0-only
-LicenseUrl: https://github.com/TinsleyDevers/PortalLauncher/blob/main/COPYING.md
+LicenseUrl: https://github.com/Portal-Launcher/PortalLauncher/blob/main/COPYING.md
 Copyright: Copyright (C) 2022-2026 Portal Launcher and Prism Launcher Contributors
 ShortDescription: A Minecraft launcher for playing modpacks with friends, built on Prism Launcher.
 Description: |-
@@ -33,6 +33,6 @@ Tags:
   - modrinth
   - mods
   - multiplayer
-ReleaseNotesUrl: https://github.com/TinsleyDevers/PortalLauncher/releases/latest
+ReleaseNotesUrl: https://github.com/Portal-Launcher/PortalLauncher/releases/latest
 ManifestType: defaultLocale
 ManifestVersion: 1.12.0
