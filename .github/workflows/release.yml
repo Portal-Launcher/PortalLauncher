@@ -90,16 +90,6 @@ jobs:
             cd ..
           done
 
-          for d in PortalLauncher-Windows-MinGW-arm64*; do
-            cd "${d}" || continue
-            INST="$(echo -n ${d} | grep -o Setup || true)"
-            PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PortalLauncher-Windows-MinGW-arm64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../PortalLauncher-MinGW-arm64-Setup-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
-            cd ..
-          done
 
       - name: Check the update archives are safe to ship
         run: python3 PortalLauncher-${{ env.VERSION }}/.github/scripts/check-update-archives.py
@@ -151,9 +141,6 @@ jobs:
             PortalLauncher-Windows-MinGW-w64-${{ env.VERSION }}.zip
             PortalLauncher-Windows-MinGW-w64-Portable-${{ env.VERSION }}.zip
             PortalLauncher-MinGW-w64-Setup-${{ env.VERSION }}.exe
-            PortalLauncher-Windows-MinGW-arm64-${{ env.VERSION }}.zip
-            PortalLauncher-Windows-MinGW-arm64-Portable-${{ env.VERSION }}.zip
-            PortalLauncher-MinGW-arm64-Setup-${{ env.VERSION }}.exe
             PortalLauncher-Windows-MSVC-arm64-${{ env.VERSION }}.zip
             PortalLauncher-Windows-MSVC-arm64-Portable-${{ env.VERSION }}.zip
             PortalLauncher-Setup-arm64-${{ env.VERSION }}.exe

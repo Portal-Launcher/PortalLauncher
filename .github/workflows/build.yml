@@ -59,11 +59,10 @@ jobs:
             msystem: CLANG64
             vcvars-arch: amd64_x86
 
-          - os: windows-11-arm
-            artifact-name: Windows-MinGW-arm64
-            cmake-preset: windows_mingw
-            msystem: CLANGARM64
-            vcvars-arch: arm64
+          # No Windows-on-ARM MinGW build. Windows-MSVC-arm64 covers that
+          # hardware and is the build an ARM user would want; the MinGW ARM
+          # target only ever contributed a ResourceFolderModel test failure
+          # that no other platform sees, and a red release because of it.
 
           - os: windows-2022
             artifact-name: Windows-MSVC
