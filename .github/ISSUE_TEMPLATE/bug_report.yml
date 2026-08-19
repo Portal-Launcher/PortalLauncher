@@ -5,12 +5,12 @@ body:
 - type: markdown
   attributes:
     value: |
-      If you need help with running Minecraft, please visit us on our Discord before making a bug report.
+      Portal Launcher is a fork of Prism Launcher. **Please report Portal bugs here, not to the Prism Launcher project.**
+      If something is broken in Portal it is this fork's fault, and upstream cannot help with it.
 
       Before submitting a bug report, please make sure you have read this *entire* form, and that:
-      * You have read the [Prism Launcher wiki](https://prismlauncher.org/wiki/) and it has not answered your question.
       * Your bug is not caused by Minecraft or any mods you have installed.
-      * Your issue has not been reported before, [make sure to use the search function!](https://github.com/PrismLauncher/PrismLauncher/issues)
+      * Your issue has not been reported before, [make sure to use the search function!](https://github.com/TinsleyDevers/PortalLauncher/issues)
 
       **Do not forget to give your issue a descriptive title.** "Bug in the instance screen" makes it hard to distinguish issues at a glance.
 - type: dropdown
@@ -25,30 +25,30 @@ body:
     - Other
 - type: textarea
   attributes:
-    label: Version of Prism Launcher
-    description: The version of Prism Launcher used in the bug report.
-    placeholder: Prism Launcher 5.0
+    label: Version of Portal Launcher
+    description: The version of Portal Launcher used in the bug report. You can find it in Help -> About Portal Launcher.
+    placeholder: Portal Launcher 1.0.5
   validations:
     required: true
 - type: textarea
   attributes:
     label: Version of Qt
-    description: The version of Qt used in the bug report. You can find it in Help -> About Prism Launcher -> About Qt.
-    placeholder: Qt 6.3.0
+    description: The version of Qt used in the bug report. You can find it in Help -> About Portal Launcher -> About Qt.
+    placeholder: Qt 6.10.2
   validations:
     required: true
 - type: textarea
   attributes:
     label: Description of bug
     description: What did you expect to happen, what happened, and why is it incorrect?
-    placeholder: The cat button should show a cat, but it showed a dog instead!
+    placeholder: The pack should have synced before launching, but it launched with the old mods.
   validations:
     required: true
 - type: textarea
   attributes:
     label: Steps to reproduce
     description: A bulleted list, or an exported instance if relevant.
-    placeholder: "* Press the cat button"
+    placeholder: "* Open the Sharing page of an instance"
   validations:
     required: true
 - type: textarea
@@ -62,4 +62,6 @@ body:
     label: This issue is unique
     options:
     - label: I have searched the issue tracker and did not find an issue describing my bug.
+      required: true
+    - label: This is a bug in Portal Launcher, not in Prism Launcher. (If it happens in Prism Launcher too, please report it upstream instead.)
       required: true

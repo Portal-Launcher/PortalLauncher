@@ -4,66 +4,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Portal does not ship Nix builds yet, and the flake still describes upstream
+# Prism. Kept so the work is not lost, but only run when asked for, so a
+# release tag does not turn the whole run red.
 on:
-  push:
-    branches:
-      - "develop"
-      - "release-*"
-    tags:
-      - "*"
-    paths:
-      # File types
-      - "**.cpp"
-      - "**.h"
-      - "**.java"
-      - "**.ui"
-      - "**.md"
-
-      # Build files
-      - "**.nix"
-      - "nix/**"
-      - "flake.lock"
-
-      # Directories
-      - "buildconfig/**"
-      - "cmake/**"
-      - "launcher/**"
-      - "libraries/**"
-      - "program_info/**"
-      - "tests/**"
-
-      # Files
-      - "CMakeLists.txt"
-
-      # Workflows
-      - ".github/workflows/nix.yml"
-  pull_request:
-    paths:
-      # File types
-      - "**.cpp"
-      - "**.h"
-      - "**.java"
-      - "**.ui"
-      - "**.md"
-
-      # Build files
-      - "**.nix"
-      - "nix/**"
-      - "flake.lock"
-
-      # Directories
-      - "buildconfig/**"
-      - "cmake/**"
-      - "launcher/**"
-      - "libraries/**"
-      - "program_info/**"
-      - "tests/**"
-
-      # Files
-      - "CMakeLists.txt"
-
-      # Workflows
-      - ".github/workflows/nix.yml"
   workflow_dispatch:
 
 permissions: {}

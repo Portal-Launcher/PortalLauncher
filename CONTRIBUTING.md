@@ -7,7 +7,7 @@
 
 We expect authentic engagement in our community.
 
-- Do not post output from Large Language Models or similar generative AI as comments on GitHub or our discord server, as such comments tend to be formulaic and low-quality content.
+- Do not post output from Large Language Models or similar generative AI as comments on issues and pull requests, as such comments tend to be formulaic and low-quality content.
 - If you use generative AI tools as an aid in developing code or documentation changes, ensure that you fully understand the proposed changes and can explain why they are the correct approach.
 
 Make sure you have added value based on your personal competency to your contributions.
@@ -158,8 +158,3 @@ As a bonus, you can also [cryptographically sign your commits][gh-signing-commit
 [gh-signing-commits]: https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits
 [gh-vigilant-mode]: https://docs.github.com/en/authentication/managing-commit-signature-verification/displaying-verification-statuses-for-all-of-your-commits
 
-## Backporting to Release Branches
-
-We use [automated backports](https://github.com/PrismLauncher/PrismLauncher/blob/develop/.github/workflows/backport.yml) to merge specific contributions from develop into `release` branches.
-
-This is done when pull requests are merged and have labels such as `backport release-7.x` - which should be added along with the milestone for the release.

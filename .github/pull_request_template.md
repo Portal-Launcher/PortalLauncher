@@ -1,9 +1,11 @@
 <!--
-Hey there! Thanks for your contribution.
+Thanks for contributing to Portal Launcher.
 
-Please make sure that your commits are signed off first.
-If you don't know how that works, check out our contribution guidelines: https://github.com/PrismLauncher/PrismLauncher/blob/develop/CONTRIBUTING.md#signing-your-work
-If you already created your commits, you can run `git rebase --signoff develop` to retroactively sign-off all your commits and `git push --force` to override what you have pushed already.
+Portal is a fork of Prism Launcher. If your change is not Portal-specific and would
+help every Prism user, please consider sending it to Prism Launcher instead:
+https://github.com/PrismLauncher/PrismLauncher - it will reach far more people there.
 
-Note that signing and signing-off are two different things!
+Please sign off your commits (`git commit -s`). If you already made them, run
+`git rebase --signoff main` and force-push. Signing and signing-off are two
+different things; see CONTRIBUTING.md.
 -->
