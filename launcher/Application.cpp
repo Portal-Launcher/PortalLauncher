@@ -931,6 +931,9 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         // FTBApp instances
         m_settings->registerSetting("FTBAppInstancesPath", "");
 
+        // Extra folders the "Other Launchers" import page looks in (';' separated)
+        m_settings->registerSetting("ImportLauncherPaths", "");
+
         // Custom Technic Client ID
         m_settings->registerSetting("TechnicClientID", "");
 

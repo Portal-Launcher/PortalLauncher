@@ -38,6 +38,7 @@
 #include "Application.h"
 #include "ui/pages/modplatform/ModpackProviderBasePage.h"
 #include "ui/pages/modplatform/import_ftb/ImportFTBPage.h"
+#include "ui/pages/modplatform/import_launchers/ImportLaunchersPage.h"
 #include "ui_NewInstanceDialog.h"
 
 #include <BaseVersion.h>
@@ -181,6 +182,7 @@ QList<BasePage*> NewInstanceDialog::getPages()
     pages.append(new FtbPage(this));
     pages.append(new LegacyFTB::Page(this));
     pages.append(new FTBImportAPP::ImportFTBPage(this));
+    pages.append(new LauncherImport::ImportLaunchersPage(this));
     pages.append(new AtlPage(this));
     pages.append(new TechnicPage(this));
 
