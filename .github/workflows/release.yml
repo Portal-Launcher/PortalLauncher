@@ -45,6 +45,11 @@ jobs:
           tag_name=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
           echo "VERSION=$tag_name" >> $GITHUB_ENV
       - name: Package artifacts properly
+        env:
+          # An unsigned, un-notarized app pulled from the internet does not warn
+          # on macOS, it refuses to open ("damaged"). Until signing secrets exist
+          # the macOS build stays a CI artifact and is not published.
+          MAC_SIGNED: ${{ secrets.APPLE_CODESIGN_CERT != '' && secrets.APPLE_NOTARIZE_APPLE_ID != '' }}
         run: |
           mv ${{ github.workspace }}/PortalLauncher-source PortalLauncher-${{ env.VERSION }}
           mv PortalLauncher-Linux-Qt6-Portable*/PortalLauncher-portable.tar.gz PortalLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
@@ -53,8 +58,13 @@ jobs:
           mv PortalLauncher-*.AppImage.zsync/PortalLauncher-*-x86_64.AppImage.zsync PortalLauncher-Linux-x86_64.AppImage.zsync
           mv PortalLauncher-*.AppImage/PortalLauncher-*-aarch64.AppImage PortalLauncher-Linux-aarch64.AppImage
           mv PortalLauncher-*.AppImage.zsync/PortalLauncher-*-aarch64.AppImage.zsync PortalLauncher-Linux-aarch64.AppImage.zsync
-          mv PortalLauncher-macOS*/PortalLauncher.zip PortalLauncher-macOS-${{ env.VERSION }}.zip
-          mv PortalLauncher-macOS*/PortalLauncher.dmg PortalLauncher-macOS-${{ env.VERSION }}.dmg
+          if [ "$MAC_SIGNED" = "true" ]; then
+            mv PortalLauncher-macOS*/PortalLauncher.zip PortalLauncher-macOS-${{ env.VERSION }}.zip
+            mv PortalLauncher-macOS*/PortalLauncher.dmg PortalLauncher-macOS-${{ env.VERSION }}.dmg
+          else
+            echo ":warning: macOS assets were built but NOT published: no Apple signing/notarization secrets are configured, and an unsigned app shows as damaged on macOS." >> $GITHUB_STEP_SUMMARY
+            rm -rf PortalLauncher-macOS*
+          fi
 
           tar --exclude='.git' -czf PortalLauncher-${{ env.VERSION }}.tar.gz PortalLauncher-${{ env.VERSION }}
 
