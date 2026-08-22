@@ -170,18 +170,27 @@ class LauncherScannerTest : public QObject {
                               }})"));
         QVERIFY(writeFile(FS::PathCombine(dot, "versions/fabric-loader-0.15.3-1.20.1/fabric-loader-0.15.3-1.20.1.json"),
                           R"({"id":"fabric-loader-0.15.3-1.20.1","inheritsFrom":"1.20.1"})"));
+        // without the launcher's manifest there is no way to say what "latest" is
+        QCOMPARE(parseVanillaRoot(dot).size(), 2);
+
+        QVERIFY(writeFile(FS::PathCombine(dot, "versions/version_manifest_v2.json"), R"({"latest":{"release":"1.21.8","snapshot":"25w31a"}})"));
         const auto found = parseVanillaRoot(dot);
-        QCOMPARE(found.size(), 2);  // latest-release is skipped
+        QCOMPARE(found.size(), 3);
 
         const FoundInstance* fabric = nullptr;
         const FoundInstance* plain = nullptr;
+        const FoundInstance* latest = nullptr;
         for (const auto& f : found) {
             if (f.name == "Fabric 1.20")
                 fabric = &f;
             if (f.name == "Plain")
                 plain = &f;
+            if (f.name == "Minecraft (latest release)")
+                latest = &f;
         }
-        QVERIFY(fabric && plain);
+        QVERIFY(fabric && plain && latest);
+        QCOMPARE(latest->mcVersion, QString("1.21.8"));
+        QVERIFY(latest->loaderUid.isEmpty());
         QCOMPARE(fabric->mcVersion, QString("1.20.1"));
         QCOMPARE(fabric->loaderUid, QString("net.fabricmc.fabric-loader"));
         QCOMPARE(fabric->loaderVersion, QString("0.15.3"));

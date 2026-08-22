@@ -467,18 +467,29 @@ QList<FoundInstance> parseVanillaRoot(const QString& dotMinecraft)
         "usercache.json", "usernamecache.json", "realms_persistence.json", "TelemetryData", "bin", ".mixin.out", ".fabric",
     };
 
+    // The stock profiles point at "latest-release"/"latest-snapshot"; the
+    // launcher's cached manifest says which version that is right now.
+    const auto latest = readJsonObject(FS::PathCombine(dotMinecraft, "versions", "version_manifest_v2.json")).value("latest").toObject();
+
     for (auto it = profiles.constBegin(); it != profiles.constEnd(); ++it) {
         const auto profile = it.value().toObject();
-        const QString versionId = profile.value("lastVersionId").toString();
-        // "latest-release"/"latest-snapshot" are not versions an instance can pin
-        if (versionId.isEmpty() || versionId.startsWith(QLatin1String("latest-")))
+        QString versionId = profile.value("lastVersionId").toString();
+        QString defaultName;
+        if (versionId == QLatin1String("latest-release")) {
+            versionId = latest.value("release").toString();
+            defaultName = QStringLiteral("Minecraft (latest release)");
+        } else if (versionId == QLatin1String("latest-snapshot")) {
+            versionId = latest.value("snapshot").toString();
+            defaultName = QStringLiteral("Minecraft (latest snapshot)");
+        }
+        if (versionId.isEmpty())
             continue;
 
         FoundInstance inst;
         inst.source = Source::Vanilla;
         inst.name = profile.value("name").toString();
         if (inst.name.isEmpty())
-            inst.name = versionId;
+            inst.name = defaultName.isEmpty() ? versionId : defaultName;
         const QString gameDir = profile.value("gameDir").toString();
         inst.gameDir = gameDir.isEmpty() ? dotMinecraft : gameDir;
         if (!QDir(inst.gameDir).exists())
