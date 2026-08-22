@@ -10,7 +10,7 @@ endif()
 
 set(Launcher_CommonName "PrismLauncher")
 set(Launcher_DisplayName "Portal Launcher")
-set(Launcher_AppID "org.prismlauncher.PrismLauncher")
+set(Launcher_AppID "io.github.portal_launcher.PortalLauncher")
 set(Launcher_Domain "prismlauncher.org")
 set(Launcher_Git "https://github.com/Portal-Launcher/PortalLauncher")
 

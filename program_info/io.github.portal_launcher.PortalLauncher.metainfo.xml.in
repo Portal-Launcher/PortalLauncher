@@ -1,75 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop">
   <id>@Launcher_AppID@</id>
-  <name>Prism Launcher</name>
-  <summary>Custom Minecraft Launcher to easily manage multiple Minecraft installations at once</summary>
-  <developer id="org.prismlauncher">
-    <name>Prism Launcher Contributors</name>
+  <name>Portal Launcher</name>
+  <summary>Minecraft launcher with shared modpacks: one person updates, everyone else just presses Play</summary>
+  <developer id="io.github.portal_launcher">
+    <name>Tinsley Devers</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <description>
-    <p>Prism Launcher is a custom launcher for Minecraft that focuses on predictability, long term stability and simplicity.</p>
+    <p>Portal Launcher is a Minecraft launcher built on Prism Launcher, with Modrinth's shared instances and friends list wired straight into the launcher. Share an instance with friends, and every time you change the pack they get the update before they launch. Your friends do not even need Portal: the official Modrinth App works too.</p>
     <p>Features:</p>
     <ul>
-      <li>Easily install game modifications, such as Fabric, Forge and Quilt</li>
-      <li>Easily install and update modpacks from the Launcher</li>
-      <li>Control your Java settings, and enable Mangohud or Gamemode with a toggle</li>
-      <li>Manage worlds and resource packs from the launcher</li>
-      <li>See logs and other details easily through a dashboard</li>
-      <li>Kill Minecraft in case of a crash/freeze</li>
-      <li>Isolate Minecraft instances to keep everything clean</li>
-      <li>Install and update mods directly from the launcher</li>
-      <li>Customize the launcher with themes, and more</li>
-      <li>And cat :3</li>
+      <li>Share an instance with friends and keep everyone on the same mods automatically</li>
+      <li>See which friends are online and join what they are playing</li>
+      <li>Import instances from the Minecraft Launcher, CurseForge, the Modrinth App, MultiMC, GDLauncher, ATLauncher and XMCL</li>
+      <li>Install mods, modpacks, resource packs and shaders from Modrinth, CurseForge and FTB</li>
+      <li>Store each mod once on disk, however many instances use it</li>
+      <li>Group mods, find duplicates, and roll back a mod update that went wrong</li>
+      <li>Isolated instances with their own Java settings, worlds and resource packs</li>
+      <li>Themes, a cat, and everything else Prism Launcher does</li>
     </ul>
   </description>
-  <screenshots>
-    <screenshot type="default">
-      <caption>The main Prism Launcher window</caption>
-      <image type="source" width="1030" height="764">https://prismlauncher.org/img/screenshots/LauncherDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Modpack installation</caption>
-      <image type="source" width="1126" height="850">https://prismlauncher.org/img/screenshots/ModpackInstallDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Modpack updating</caption>
-      <image type="source" width="930" height="677">https://prismlauncher.org/img/screenshots/ModpackUpdateDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Mod installation</caption>
-      <image type="source" width="848" height="558">https://prismlauncher.org/img/screenshots/ModInstallDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Mod updating</caption>
-      <image type="source" width="860" height="748">https://prismlauncher.org/img/screenshots/ModUpdateDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Instance management</caption>
-      <image type="source" width="960" height="659">https://prismlauncher.org/img/screenshots/PropertiesDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Cat :3</caption>
-      <image type="source" width="1042" height="754">https://prismlauncher.org/img/screenshots/LauncherCatDark.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Customization</caption>
-      <image type="source" width="1040" height="752">https://prismlauncher.org/img/screenshots/CustomizeDark.png</image>
-    </screenshot>
-  </screenshots>
   <releases>
     <release version="@Launcher_VERSION_NAME@" date="@Launcher_BUILD_TIMESTAMP@"></release>
   </releases>
-  <url type="homepage">https://prismlauncher.org/</url>
-  <url type="bugtracker">https://github.com/PrismLauncher/PrismLauncher/issues</url>
-  <url type="faq">https://prismlauncher.org/wiki/overview/faq/</url>
-  <url type="help">https://prismlauncher.org/wiki/</url>
-  <url type="donation">https://opencollective.com/prismlauncher</url>
-  <url type="translate">https://hosted.weblate.org/projects/prismlauncher/launcher</url>
-  <url type="contact">https://prismlauncher.org/discord</url>
-  <url type="vcs-browser">https://github.com/PrismLauncher/PrismLauncher</url>
-  <url type="contribute">https://github.com/PrismLauncher/PrismLauncher/blob/develop/CONTRIBUTING.md</url>
+  <url type="homepage">https://portallauncher.com/</url>
+  <url type="bugtracker">https://github.com/Portal-Launcher/PortalLauncher/issues</url>
+  <url type="help">https://github.com/Portal-Launcher/PortalLauncher#readme</url>
+  <url type="vcs-browser">https://github.com/Portal-Launcher/PortalLauncher</url>
+  <url type="contribute">https://github.com/Portal-Launcher/PortalLauncher/blob/main/CONTRIBUTING.md</url>
   <content_rating type="oars-1.1">
     <content_attribute id="violence-fantasy">moderate</content_attribute>
     <content_attribute id="social-chat">intense</content_attribute>

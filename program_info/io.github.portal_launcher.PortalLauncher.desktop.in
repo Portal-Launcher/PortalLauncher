@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Name=@Launcher_DisplayName@
-Comment=Discover, manage, and play Minecraft instances
+Comment=Play Minecraft modpacks and share them with friends
 Type=Application
 Terminal=false
 Exec=@Launcher_APP_BINARY_NAME@ %U
 StartupNotify=true
 Icon=@Launcher_AppID@
 Categories=Game;ActionGame;AdventureGame;Simulation;PackageManager;
-Keywords=game;minecraft;mc;
+Keywords=game;minecraft;mc;modpack;mods;prism;portal;
 StartupWMClass=@Launcher_CommonName@
 MimeType=application/zip;application/x-modrinth-modpack+zip;x-scheme-handler/curseforge;x-scheme-handler/prismlauncher;x-scheme-handler/@Launcher_APP_BINARY_NAME@;

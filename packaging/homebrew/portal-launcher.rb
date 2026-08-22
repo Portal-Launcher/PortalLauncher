@@ -22,7 +22,7 @@ cask "portal-launcher" do
 
   zap trash: [
     "~/Library/Application Support/PrismLauncher",
-    "~/Library/Preferences/org.prismlauncher.PrismLauncher.plist",
+    "~/Library/Preferences/io.github.portal_launcher.PortalLauncher.plist",
   ]
 
   caveats do

@@ -109,13 +109,14 @@ be bumped with `brew bump-cask-pr --version=1.0.6 portal-launcher`.
 
 The most work of the five, and the one with a real prerequisite.
 
-**The app id has to be Portal's first.** Right now it is
-`org.prismlauncher.PrismLauncher` (`program_info/CMakeLists.txt`, line 13).
-Flathub will not accept an app id under a domain you do not control, and this
-one would collide with Prism's own Flathub entry, which is a much worse problem
-than a naming nit.
+**The app id is Portal's own now.** It is `io.github.portal_launcher.PortalLauncher`
+(`program_info/CMakeLists.txt`), with the `program_info/` desktop, metainfo,
+mime, icon and svg files named to match, and the AppImage step of
+`.github/actions/package/linux/action.yml` updated. It used to be
+`org.prismlauncher.PrismLauncher`, which Flathub would have rejected (a domain
+we do not control) and which would have collided with Prism's own entry.
 
-The rename is smaller than it looks, and safe:
+Things worth knowing about that id:
 
 - `Launcher_AppID` reaches exactly one place in the code,
   `BuildConfig.LAUNCHER_APPID`, which is used for `setDesktopFileName` and for
@@ -123,12 +124,6 @@ The rename is smaller than it looks, and safe:
 - It does **not** touch the data folder. That is `Launcher_CommonName`
   (`PrismLauncher`), which is what makes Portal read an existing Prism install,
   and it stays exactly as it is.
-- So: change that one line to `io.github.portal_launcher.PortalLauncher`, rename
-  the six `program_info/org.prismlauncher.PrismLauncher.*` files to match
-  (`.desktop.in`, `.metainfo.xml.in`, `.mime.xml`, `.svg`, `_256.png`, and the
-  Social/Source svgs if you want them consistent), and update the three
-  hardcoded names in the AppImage step of
-  `.github/actions/package/linux/action.yml`.
 - Windows is completely unaffected. Nothing on Windows reads the app id.
 - The underscore is not a typo: Flathub derives the id from the GitHub account
   that owns the Pages site, and normalises the hyphen in `Portal-Launcher` to

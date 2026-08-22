@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LAUNCHER_APPID="org.prismlauncher.PrismLauncher"
+LAUNCHER_APPID="io.github.portal_launcher.PortalLauncher"
 
 svg2png() {
     input_file="$1"
