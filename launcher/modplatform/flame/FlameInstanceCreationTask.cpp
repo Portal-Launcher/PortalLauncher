@@ -67,7 +67,10 @@
 #include "meta/Index.h"
 #include "minecraft/World.h"
 #include "minecraft/mod/tasks/LocalResourceParse.h"
+#include "modplatform/helpers/HashUtils.h"
 #include "net/ApiDownload.h"
+#include "net/ChecksumValidator.h"
+#include "net/ContentCache.h"
 #include "ui/pages/modplatform/OptionalModDialog.h"
 
 static const FlameAPI api;
@@ -576,12 +579,37 @@ void FlameCreationTask::setupDownloadJob(QEventLoop& loop)
         auto path = FS::PathCombine(m_stagingPath, relpath);
 
         if (!result.version.downloadUrl.isEmpty()) {
+            // Another instance may already have this exact file: link it from
+            // the content pool instead of downloading it again.
+            const QString hashType = result.version.hash_type;
+            const QString hash = result.version.hash;
+            if (!hashType.isEmpty() && !hash.isEmpty()) {
+                const QString cached = ContentCache::find(hashType, hash);
+                if (!cached.isEmpty() && ContentCache::deploy(cached, path, hashType, hash)) {
+                    qDebug() << "Served" << fileName << "from the content pool";
+                    continue;
+                }
+                m_pooledAfterDownload.append({ path, hashType, hash });
+            }
             qDebug() << "Will download" << result.version.downloadUrl << "to" << path;
             auto dl = Net::ApiDownload::makeFile(result.version.downloadUrl, path);
+            if (!hashType.isEmpty() && !hash.isEmpty()) {
+                const auto algorithm = Hashing::algorithmFromString(hashType);
+                if (algorithm == Hashing::Algorithm::Sha1)
+                    dl->addValidator(new Net::ChecksumValidator(QCryptographicHash::Sha1, hash));
+                else if (algorithm == Hashing::Algorithm::Md5)
+                    dl->addValidator(new Net::ChecksumValidator(QCryptographicHash::Md5, hash));
+            }
             m_filesJob->addNetAction(dl);
         }
     }
 
+    connect(m_filesJob.get(), &NetJob::succeeded, this, [this]() {
+        // downloads were hash-checked on the way in; pool them for the next instance
+        for (const auto& pooled : m_pooledAfterDownload)
+            ContentCache::store(pooled.hashType, pooled.hash, pooled.path);
+        m_pooledAfterDownload.clear();
+    });
     connect(m_filesJob.get(), &NetJob::finished, this, [this, &loop]() {
         m_filesJob.reset();
         validateOtherResources(loop);

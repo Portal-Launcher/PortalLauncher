@@ -14,6 +14,7 @@
 #include "modplatform/helpers/OverrideUtils.h"
 
 #include "net/ChecksumValidator.h"
+#include "net/ContentCache.h"
 
 #include "net/ApiDownload.h"
 #include "net/ApiHeaderProxy.h"
@@ -30,6 +31,25 @@
 #include <QHash>
 #include <vector>
 
+
+namespace {
+/** The pool keys files by the same hash the pack format gave us. */
+QString contentPoolHashType(QCryptographicHash::Algorithm algorithm)
+{
+    switch (algorithm) {
+        case QCryptographicHash::Sha512:
+            return QStringLiteral("sha512");
+        case QCryptographicHash::Sha256:
+            return QStringLiteral("sha256");
+        case QCryptographicHash::Sha1:
+            return QStringLiteral("sha1");
+        case QCryptographicHash::Md5:
+            return QStringLiteral("md5");
+        default:
+            return {};
+    }
+}
+}  // namespace
 bool ModrinthCreationTask::abort()
 {
     if (!canAbort()) {
@@ -253,6 +273,10 @@ std::unique_ptr<MinecraftInstance> ModrinthCreationTask::createInstance()
     auto rootModpackUrl = QUrl::fromLocalFile(rootModpackPath);
     // TODO make this work with other sorts of resource
     QHash<QString, Resource*> resources;
+    struct PooledFile {
+        QString path, hashType, hash;
+    };
+    QList<PooledFile> pooledAfterDownload;
     for (auto& file : m_files) {
         auto fileName = file.path;
         fileName = FS::RemoveInvalidPathChars(fileName);
@@ -281,6 +305,19 @@ std::unique_ptr<MinecraftInstance> ModrinthCreationTask::createInstance()
             .gameVersion = m_minecraft_version,
             .loader = loader,
         };
+
+        // Another instance may already have this exact file: link it from the
+        // content pool instead of downloading it again.
+        const QString poolHashType = contentPoolHashType(file.hashAlgorithm);
+        const QString poolHash = QString::fromLatin1(file.hash.toHex());
+        if (!poolHashType.isEmpty()) {
+            const QString cached = ContentCache::find(poolHashType, poolHash);
+            if (!cached.isEmpty() && ContentCache::deploy(cached, filePath, poolHashType, poolHash)) {
+                qDebug() << "Served" << fileName << "from the content pool";
+                continue;
+            }
+            pooledAfterDownload.append({ filePath, poolHashType, poolHash });
+        }
 
         QUrl downloadUrl = file.downloads.dequeue();
         auto dl = Net::ApiDownload::makeFile(downloadUrl, filePath, Net::Download::Option::NoOptions, meta);
@@ -328,6 +365,11 @@ std::unique_ptr<MinecraftInstance> ModrinthCreationTask::createInstance()
         }
         return nullptr;
     }
+
+    // Everything that was downloaded is hash-verified; remember it for the
+    // next instance that wants the same file.
+    for (const auto& pooled : pooledAfterDownload)
+        ContentCache::store(pooled.hashType, pooled.hash, pooled.path);
 
     QEventLoop ensureMetaLoop;
     QDir folder = FS::PathCombine(instance->modsRoot(), ".index");

@@ -86,6 +86,10 @@ class FlameCreationTask final : public InstanceCreationTask {
     // Handle to allow aborting
     Task::Ptr m_processUpdateFileInfoJob = nullptr;
     NetJob::Ptr m_filesJob = nullptr;
+    struct PooledFile {
+        QString path, hashType, hash;
+    };
+    QList<PooledFile> m_pooledAfterDownload;
 
     QString m_managedId, m_managedVersionId;
 
