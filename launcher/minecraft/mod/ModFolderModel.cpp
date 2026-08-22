@@ -63,20 +63,87 @@ ModFolderModel::ModFolderModel(const QDir& dir, BaseInstance* instance, bool is_
     : ResourceFolderModel(QDir(dir), instance, is_indexed, create_dir, parent)
 {
     m_column_names = QStringList({ "Enable", "Image", "Name", "Version", "Last Modified", "Provider", "Size", "Side", "Loaders",
-                                   "Minecraft Versions", "Release Type", "Requires", "Required By" });
+                                   "Minecraft Versions", "Release Type", "Requires", "Required By", "Group" });
     m_column_names_translated =
         QStringList({ tr("Enable"), tr("Image"), tr("Name"), tr("Version"), tr("Last Modified"), tr("Provider"), tr("Size"), tr("Side"),
-                      tr("Loaders"), tr("Minecraft Versions"), tr("Release Type"), tr("Requires"), tr("Required By") });
+                      tr("Loaders"), tr("Minecraft Versions"), tr("Release Type"), tr("Requires"), tr("Required By"), tr("Group") });
+    // the Group column sorts by group in ModProxyModel; the key here is a placeholder
     m_column_sort_keys = { SortType::ENABLED,      SortType::NAME,     SortType::NAME,       SortType::VERSION, SortType::DATE,
                            SortType::PROVIDER,     SortType::SIZE,     SortType::SIDE,       SortType::LOADERS, SortType::MC_VERSIONS,
-                           SortType::RELEASE_TYPE, SortType::REQUIRES, SortType::REQUIRED_BY };
+                           SortType::RELEASE_TYPE, SortType::REQUIRES, SortType::REQUIRED_BY, SortType::NAME };
     m_column_resize_modes = { QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Stretch,     QHeaderView::Interactive,
                               QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Interactive,
                               QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Interactive,
-                              QHeaderView::Interactive };
-    m_columnsHideable = { false, true, false, true, true, true, true, true, true, true, true, true, true };
+                              QHeaderView::Interactive, QHeaderView::Interactive };
+    m_columnsHideable = { false, true, false, true, true, true, true, true, true, true, true, true, true, true };
+
+    if (instance) {
+        m_groups.setInstanceRoot(instance->instanceRoot());
+        m_groups.load();
+    }
 
     connect(this, &ModFolderModel::parseFinished, this, &ModFolderModel::onParseFinished);
+}
+
+const QString ModFolderModel::GROUP_FILTER_NONE = QStringLiteral("\x01none");
+
+QString ModFolderModel::groupOf(int row) const
+{
+    if (row < 0 || row >= static_cast<int>(size()))
+        return {};
+    return m_groups.groupOf(at(row));
+}
+
+void ModFolderModel::groupsEdited()
+{
+    m_groups.save();
+    if (size() > 0)
+        emit dataChanged(index(0, GroupColumn), index(static_cast<int>(size()) - 1, GroupColumn), { Qt::DisplayRole });
+    emit groupsChanged();
+}
+
+void ModFolderModel::setGroupFilter(const QString& group)
+{
+    m_groupFilter = group;
+}
+
+QSortFilterProxyModel* ModFolderModel::createFilterProxyModel(QObject* parent)
+{
+    return new ModProxyModel(parent);
+}
+
+bool ModFolderModel::ModProxyModel::filterAcceptsRow(int source_row, const QModelIndex& source_parent) const
+{
+    auto* model = qobject_cast<ModFolderModel*>(sourceModel());
+    if (!model)
+        return ProxyModel::filterAcceptsRow(source_row, source_parent);
+
+    const QString group = model->groupOf(source_row);
+    const QString wanted = model->groupFilter();
+    if (!wanted.isEmpty()) {
+        if (wanted == GROUP_FILTER_NONE ? !group.isEmpty() : group != wanted)
+            return false;
+    }
+    // the search box also finds mods by their group name
+    if (!group.isEmpty() && filterRegularExpression().match(group).hasMatch())
+        return true;
+    return ProxyModel::filterAcceptsRow(source_row, source_parent);
+}
+
+bool ModFolderModel::ModProxyModel::lessThan(const QModelIndex& source_left, const QModelIndex& source_right) const
+{
+    auto* model = qobject_cast<ModFolderModel*>(sourceModel());
+    if (!model || source_left.column() != GroupColumn || source_right.column() != GroupColumn)
+        return ProxyModel::lessThan(source_left, source_right);
+
+    const QString l = model->groupOf(source_left.row());
+    const QString r = model->groupOf(source_right.row());
+    if (l == r)
+        return model->at(source_left.row()).compare(model->at(source_right.row()), SortType::NAME) < 0;
+    // ungrouped mods sink to the end whichever way the column is sorted
+    if (l.isEmpty() != r.isEmpty())
+        return sortOrder() == Qt::AscendingOrder ? r.isEmpty() : l.isEmpty();
+    return QString::localeAwareCompare(l, r) < 0;
 }
 
 QVariant ModFolderModel::data(const QModelIndex& index, int role) const
@@ -119,6 +186,9 @@ QVariant ModFolderModel::data(const QModelIndex& index, int role) const
                 }
                 case RequiresColumn: {
                     return at(row).requiresCount();
+                }
+                case GroupColumn: {
+                    return m_groups.groupOf(at(row));
                 }
             }
             break;
@@ -182,6 +252,7 @@ QVariant ModFolderModel::headerData(int section, [[maybe_unused]] Qt::Orientatio
                 case SizeColumn:
                 case RequiredByColumn:
                 case RequiresColumn:
+                case GroupColumn:
                     return columnNames().at(section);
                 default:
                     return QVariant();
@@ -213,6 +284,8 @@ QVariant ModFolderModel::headerData(int section, [[maybe_unused]] Qt::Orientatio
                     return tr("For each mod, the number of other mods which depend on it.");
                 case RequiresColumn:
                     return tr("For each mod, the number of other mods it depends on.");
+                case GroupColumn:
+                    return tr("The group you filed this mod under.");
                 default:
                     return QVariant();
             }

@@ -45,6 +45,7 @@
 #include <QString>
 
 #include "Mod.h"
+#include "ModGroups.h"
 #include "ResourceFolderModel.h"
 #include "minecraft/Component.h"
 #include "minecraft/mod/Resource.h"
@@ -73,6 +74,7 @@ class ModFolderModel : public ResourceFolderModel {
         ReleaseTypeColumn,
         RequiresColumn,
         RequiredByColumn,
+        GroupColumn,
         NUM_COLUMNS
     };
     ModFolderModel(const QDir& dir, BaseInstance* instance, bool is_indexed, bool create_dir, QObject* parent = nullptr);
@@ -83,6 +85,28 @@ class ModFolderModel : public ResourceFolderModel {
 
     QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
     int columnCount(const QModelIndex& parent) const override;
+
+    QSortFilterProxyModel* createFilterProxyModel(QObject* parent = nullptr) override;
+
+    /* User-defined mod groups (see ModGroups) */
+    ModGroups& groups() { return m_groups; }
+    const ModGroups& groups() const { return m_groups; }
+    QString groupOf(int row) const;
+    /** Persist group edits and refresh the Group column. */
+    void groupsEdited();
+    /** Only show mods in this group; empty shows all, GROUP_FILTER_NONE shows ungrouped mods. */
+    void setGroupFilter(const QString& group);
+    QString groupFilter() const { return m_groupFilter; }
+    static const QString GROUP_FILTER_NONE;
+
+    class ModProxyModel : public ProxyModel {
+       public:
+        explicit ModProxyModel(QObject* parent = nullptr) : ProxyModel(parent) {}
+
+       protected:
+        bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;
+        bool lessThan(const QModelIndex& source_left, const QModelIndex& source_right) const override;
+    };
 
     [[nodiscard]] Resource* createResource(const QFileInfo& file) override { return new Mod(file); }
     [[nodiscard]] Task* createParseTask(Resource&) override;
@@ -104,7 +128,12 @@ class ModFolderModel : public ResourceFolderModel {
     void onParseSucceeded(int ticket, QString resource_id) override;
     void onParseFinished();
 
+   signals:
+    void groupsChanged();
+
    private:
     QHash<QString, QSet<Mod*>> m_requiredBy;
     QHash<QString, QSet<Mod*>> m_requires;
+    ModGroups m_groups;
+    QString m_groupFilter;
 };

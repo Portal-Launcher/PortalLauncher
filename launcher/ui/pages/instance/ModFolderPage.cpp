@@ -44,12 +44,16 @@
 
 #include <QAbstractItemModel>
 #include <QAction>
+#include <QComboBox>
 #include <QEvent>
-#include <QKeyEvent>
 #include <QFileInfo>
+#include <QGridLayout>
+#include <QInputDialog>
+#include <QKeyEvent>
 #include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
+#include <QSignalBlocker>
 #include <QSortFilterProxyModel>
 #include <algorithm>
 #include <memory>
@@ -137,6 +141,131 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     ui->actionsToolbar->insertActionAfter(ui->actionViewHomepage, ui->actionExportMetadata);
 
     ui->actionsToolbar->insertActionAfter(ui->actionViewFolder, ui->actionViewConfigs);
+
+    // Groups: file the selected mods under a name, then filter the list by it.
+    m_groupAction = new QAction(QIcon::fromTheme("tag"), tr("Group"), this);
+    m_groupAction->setToolTip(tr("File the selected mods under a group, so a big mod list stays manageable."));
+    m_groupMenu = new QMenu(this);
+    m_groupAction->setMenu(m_groupMenu);
+    connect(m_groupMenu, &QMenu::aboutToShow, this, &ModFolderPage::rebuildGroupMenu);
+    ui->actionsToolbar->insertActionAfter(ui->actionChangeVersion, m_groupAction);
+    connect(ui->treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { m_groupAction->setEnabled(ui->treeView->selectionModel()->hasSelection()); });
+    m_groupAction->setEnabled(false);
+
+    m_groupFilter = new QComboBox(this);
+    m_groupFilter->setToolTip(tr("Only show mods from one group"));
+    m_groupFilter->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    if (auto* grid = qobject_cast<QGridLayout*>(ui->filterEdit->parentWidget()->layout())) {
+        // the search box spans both columns; give the right one to the group filter
+        grid->removeWidget(ui->filterEdit);
+        grid->addWidget(ui->filterEdit, 3, 1);
+        grid->addWidget(m_groupFilter, 3, 2);
+    }
+    connect(m_groupFilter, &QComboBox::currentIndexChanged, this, [this](int) {
+        m_model->setGroupFilter(m_groupFilter->currentData().toString());
+        m_filterModel->invalidate();
+    });
+    connect(m_model, &ModFolderModel::groupsChanged, this, &ModFolderPage::rebuildGroupFilter);
+    connect(m_model, &ResourceFolderModel::updateFinished, this, &ModFolderPage::rebuildGroupFilter);
+    rebuildGroupFilter();
+}
+
+void ModFolderPage::rebuildGroupFilter()
+{
+    const QString current = m_groupFilter->currentData().toString();
+    const QStringList groups = m_model->groups().groupNames();
+
+    QSignalBlocker blocker(m_groupFilter);
+    m_groupFilter->clear();
+    m_groupFilter->addItem(tr("All groups"), QString());
+    for (const auto& group : groups)
+        m_groupFilter->addItem(group, group);
+    if (!groups.isEmpty())
+        m_groupFilter->addItem(tr("Not in a group"), ModFolderModel::GROUP_FILTER_NONE);
+    m_groupFilter->setVisible(!groups.isEmpty());
+
+    int idx = m_groupFilter->findData(current);
+    if (idx < 0)
+        idx = 0;
+    m_groupFilter->setCurrentIndex(idx);
+    if (m_model->groupFilter() != m_groupFilter->currentData().toString()) {
+        m_model->setGroupFilter(m_groupFilter->currentData().toString());
+        m_filterModel->invalidate();
+    }
+}
+
+void ModFolderPage::rebuildGroupMenu()
+{
+    m_groupMenu->clear();
+    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto mods = m_model->selectedMods(selection);
+    const QStringList groups = m_model->groups().groupNames();
+
+    // which group the whole selection is in, if it agrees
+    QString common;
+    bool agree = !mods.isEmpty();
+    for (auto* mod : mods) {
+        const QString g = m_model->groups().groupOf(*mod);
+        if (mod == mods.first())
+            common = g;
+        else if (g != common)
+            agree = false;
+    }
+
+    for (const auto& group : groups) {
+        auto* act = m_groupMenu->addAction(group);
+        act->setCheckable(true);
+        act->setChecked(agree && common == group);
+        connect(act, &QAction::triggered, this, [this, group] { assignSelectedToGroup(group); });
+    }
+    if (!groups.isEmpty())
+        m_groupMenu->addSeparator();
+
+    auto* create = m_groupMenu->addAction(tr("New Group…"));
+    connect(create, &QAction::triggered, this, [this] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("New Group"), tr("Group name:"), QLineEdit::Normal, QString(), &ok).trimmed();
+        if (ok && !name.isEmpty())
+            assignSelectedToGroup(name);
+    });
+    auto* clear = m_groupMenu->addAction(tr("Remove from Group"));
+    clear->setEnabled(!(agree && common.isEmpty()));
+    connect(clear, &QAction::triggered, this, [this] { assignSelectedToGroup(QString()); });
+
+    if (groups.isEmpty())
+        return;
+    m_groupMenu->addSeparator();
+    auto* rename = m_groupMenu->addMenu(tr("Rename Group"));
+    auto* remove = m_groupMenu->addMenu(tr("Delete Group"));
+    for (const auto& group : groups) {
+        connect(rename->addAction(group), &QAction::triggered, this, [this, group] {
+            bool ok = false;
+            const QString name = QInputDialog::getText(this, tr("Rename Group"), tr("New name for \"%1\":").arg(group), QLineEdit::Normal,
+                                                       group, &ok)
+                                     .trimmed();
+            if (ok && !name.isEmpty() && name != group) {
+                m_model->groups().renameGroup(group, name);
+                m_model->groupsEdited();
+            }
+        });
+        connect(remove->addAction(group), &QAction::triggered, this, [this, group] {
+            // the mods stay; only the label goes away
+            m_model->groups().deleteGroup(group);
+            m_model->groupsEdited();
+        });
+    }
+}
+
+void ModFolderPage::assignSelectedToGroup(const QString& group)
+{
+    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto mods = m_model->selectedMods(selection);
+    if (mods.isEmpty())
+        return;
+    for (auto* mod : mods)
+        m_model->groups().assign(*mod, group);
+    m_model->groupsEdited();
 }
 
 bool ModFolderPage::shouldDisplay() const

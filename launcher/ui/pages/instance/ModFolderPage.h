@@ -42,6 +42,10 @@
 #include "ExternalResourcesPage.h"
 #include "ui/dialogs/ResourceDownloadDialog.h"
 
+class QAction;
+class QComboBox;
+class QMenu;
+
 class ModFolderPage : public ExternalResourcesPage {
     Q_OBJECT
 
@@ -75,9 +79,16 @@ class ModFolderPage : public ExternalResourcesPage {
     void exportModMetadata();
     void changeModVersion();
 
+    void rebuildGroupMenu();
+    void rebuildGroupFilter();
+    void assignSelectedToGroup(const QString& group);
+
    protected:
     ModFolderModel* m_model;
     QPointer<ResourceDownload::ModDownloadDialog> m_downloadDialog;
+    QAction* m_groupAction = nullptr;
+    QMenu* m_groupMenu = nullptr;
+    QComboBox* m_groupFilter = nullptr;
 };
 
 class CoreModFolderPage : public ModFolderPage {
