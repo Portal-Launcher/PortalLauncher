@@ -109,6 +109,19 @@
        </property>
       </spacer>
      </item>
+     <item>
+      <widget class="QPushButton" name="importAllButton">
+       <property name="toolTip">
+        <string>Import every instance in the list, one after another</string>
+       </property>
+       <property name="text">
+        <string>Import All</string>
+       </property>
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
   </layout>

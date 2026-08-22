@@ -47,9 +47,11 @@ class ImportLaunchersPage : public QWidget, public ModpackProviderBasePage {
    private slots:
     void onSelectionChanged(const QModelIndex& now, const QModelIndex& previous);
     void onScanFinished(int count);
+    void importAll();
 
    private:
     void suggestCurrent();
+    static QString iconKeyFor(const FoundInstance& inst);
 
     bool m_initialized = false;
     FoundInstance m_selected;
