@@ -20,7 +20,7 @@
  */
 namespace LauncherImport {
 
-enum class Source { Vanilla, CurseForge, ModrinthApp, MultiMC, PolyMC, Prism, GDLauncher, GDLauncherLegacy, ATLauncher, XMCL };
+enum class Source { Vanilla, CurseForge, ModrinthApp, MultiMC, PolyMC, Prism, GDLauncher, GDLauncherLegacy, ATLauncher, XMCL, Technic };
 
 QString sourceName(Source source);
 
@@ -71,6 +71,7 @@ FoundInstance parseATLauncherInstance(const QString& dir);
 FoundInstance parseXMCLInstance(const QString& dir);
 FoundInstance parseGDLauncherInstance(const QString& dir);
 FoundInstance parseGDLauncherLegacyInstance(const QString& dir);
+FoundInstance parseTechnicInstance(const QString& dir);
 FoundInstance parseMultiMCInstance(const QString& dir, Source source = Source::MultiMC);
 QList<FoundInstance> parseVanillaRoot(const QString& dotMinecraft);
 QList<FoundInstance> parseModrinthAppRoot(const QString& root);

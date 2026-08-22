@@ -14,7 +14,7 @@
     <ul>
       <li>Share an instance with friends and keep everyone on the same mods automatically</li>
       <li>See which friends are online and join what they are playing</li>
-      <li>Import instances from the Minecraft Launcher, CurseForge, the Modrinth App, MultiMC, GDLauncher, ATLauncher and XMCL</li>
+      <li>Import instances from the Minecraft Launcher, CurseForge, the Modrinth App, MultiMC, GDLauncher, ATLauncher, Technic and XMCL</li>
       <li>Install mods, modpacks, resource packs and shaders from Modrinth, CurseForge and FTB</li>
       <li>Store each mod once on disk, however many instances use it</li>
       <li>Group mods, find duplicates, and roll back a mod update that went wrong</li>

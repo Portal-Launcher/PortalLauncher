@@ -14,7 +14,7 @@
    <item>
     <widget class="QLabel" name="label">
      <property name="text">
-      <string>Bring an instance over from the Minecraft Launcher, CurseForge, the Modrinth App, MultiMC, PolyMC, Prism Launcher, GDLauncher, ATLauncher or XMCL. Its mods, worlds and settings are copied; the other launcher keeps its own copy.</string>
+      <string>Bring an instance over from the Minecraft Launcher, CurseForge, the Modrinth App, MultiMC, PolyMC, Prism Launcher, GDLauncher, ATLauncher, Technic or XMCL. Its mods, worlds and settings are copied; the other launcher keeps its own copy.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>

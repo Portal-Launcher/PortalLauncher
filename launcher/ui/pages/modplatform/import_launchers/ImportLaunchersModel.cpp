@@ -106,7 +106,8 @@ QVariant ListModel::data(const QModelIndex& index, int role) const
         case Qt::SizeHintRole:
             return QSize(0, 58);
         case UserDataTypes::DESCRIPTION: {
-            QString line = tr("%1 - Minecraft %2").arg(inst.launcherName(), inst.mcVersion);
+            QString line = inst.mcVersion == QLatin1String("?") ? inst.launcherName()
+                                                                  : tr("%1 - Minecraft %2").arg(inst.launcherName(), inst.mcVersion);
             const QString loader = inst.loaderDescription();
             if (!loader.isEmpty())
                 line += QStringLiteral(" - ") + loader;

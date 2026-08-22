@@ -141,6 +141,21 @@ class LauncherScannerTest : public QObject {
         QCOMPARE(inst.loaderVersion, QString("36.2.39"));
     }
 
+    void test_technic()
+    {
+        QTemporaryDir dir;
+        QVERIFY(writeFile(FS::PathCombine(dir.path(), "bin/version.json"), R"({"id":"1.12.2-forge","inheritsFrom":"1.12.2"})"));
+        QVERIFY(writeFile(FS::PathCombine(dir.path(), "mods/something.jar"), "jar"));
+        const auto inst = parseTechnicInstance(dir.path());
+        QVERIFY(inst.isValid());
+        QCOMPARE(inst.source, Source::Technic);
+        QCOMPARE(inst.gameDir, dir.path());
+        // a plain mods folder without bin/ is not a Technic pack
+        QTemporaryDir plain;
+        QVERIFY(writeFile(FS::PathCombine(plain.path(), "mods/something.jar"), "jar"));
+        QVERIFY(!parseTechnicInstance(plain.path()).isValid());
+    }
+
     void test_multimc()
     {
         QTemporaryDir root;

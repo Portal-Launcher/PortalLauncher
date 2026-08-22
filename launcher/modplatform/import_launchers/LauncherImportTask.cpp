@@ -10,6 +10,7 @@
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
+#include "modplatform/technic/TechnicPackProcessor.h"
 #include "settings/INISettingsObject.h"
 
 namespace {
@@ -69,8 +70,21 @@ void LauncherImportTask::copyFinished()
     setProgress(2, 2);
     if (m_found.isMultiMCFormat())
         finishMultiMC();
+    else if (m_found.source == LauncherImport::Source::Technic)
+        finishTechnic();
     else
         finishGeneric();
+}
+
+void LauncherImportTask::finishTechnic()
+{
+    // Technic packs carry their own version.json (and often a modpack.jar);
+    // the same processor the Technic zip import uses turns that into
+    // components, so an imported pack is set up exactly like a fresh one.
+    m_technicProcessor.reset(new Technic::TechnicPackProcessor());
+    connect(m_technicProcessor.get(), &Technic::TechnicPackProcessor::succeeded, this, &LauncherImportTask::emitSucceeded);
+    connect(m_technicProcessor.get(), &Technic::TechnicPackProcessor::failed, this, &LauncherImportTask::emitFailed);
+    m_technicProcessor->run(m_globalSettings, name(), m_instIcon, m_stagingPath);
 }
 
 void LauncherImportTask::finishMultiMC()

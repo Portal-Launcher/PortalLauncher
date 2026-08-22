@@ -14,6 +14,11 @@
 
 #include "InstanceTask.h"
 #include "LauncherScanner.h"
+#include "QObjectPtr.h"
+
+namespace Technic {
+class TechnicPackProcessor;
+}
 
 /** Turns an instance found in another launcher into one of ours. MultiMC-format
  *  instances are copied whole and keep their settings; everything else gets
@@ -37,8 +42,10 @@ class LauncherImportTask : public InstanceTask {
    private:
     void finishMultiMC();
     void finishGeneric();
+    void finishTechnic();
 
     QFuture<bool> m_copyFuture;
     QFutureWatcher<bool> m_copyFutureWatcher;
     const LauncherImport::FoundInstance m_found;
+    shared_qobject_ptr<Technic::TechnicPackProcessor> m_technicProcessor;
 };

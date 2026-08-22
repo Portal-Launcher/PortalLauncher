@@ -106,6 +106,7 @@ void scanInstancesFolder(QList<FoundInstance>& out, const QString& dir, Source m
         addUnique(out, parseXMCLInstance(path));
         addUnique(out, parseGDLauncherInstance(path));
         addUnique(out, parseGDLauncherLegacyInstance(path));
+        addUnique(out, parseTechnicInstance(path));
     }
 }
 
@@ -151,6 +152,8 @@ QString sourceName(Source source)
             return QStringLiteral("ATLauncher");
         case Source::XMCL:
             return QStringLiteral("XMCL");
+        case Source::Technic:
+            return QStringLiteral("Technic");
     }
     return {};
 }
@@ -365,6 +368,27 @@ FoundInstance parseGDLauncherLegacyInstance(const QString& dir)
     inst.loaderVersion = stripGameVersionPrefix(loader.value("loaderVersion").toString(), inst.mcVersion);
     inst.excludes = { QStringLiteral("config.json"), QStringLiteral("background.png"), QStringLiteral("thumbnail.png") };
     inst.iconPath = existingIcon(FS::PathCombine(dir, "thumbnail.png"));
+    return inst;
+}
+
+// ---------------------------------------------------------------- Technic
+
+FoundInstance parseTechnicInstance(const QString& dir)
+{
+    // A Technic pack folder is a game dir with the pack's own bin/ next to
+    // mods/: modpack.jar (with version.json inside) or a bare version.json.
+    const bool hasJar = QFileInfo(FS::PathCombine(dir, "bin", "modpack.jar")).isFile();
+    const bool hasJson = QFileInfo(FS::PathCombine(dir, "bin", "version.json")).isFile();
+    if (!hasJar && !hasJson)
+        return {};
+    FoundInstance inst;
+    inst.source = Source::Technic;
+    inst.name = QFileInfo(dir).fileName();
+    inst.gameDir = dir;
+    // the Technic pack processor works the real version out from bin/ at import time
+    inst.mcVersion = QStringLiteral("?");
+    inst.excludes = { QStringLiteral("cache") };
+    inst.iconPath = existingIcon(FS::PathCombine(dir, "icon.png"));
     return inst;
 }
 
@@ -663,6 +687,14 @@ QList<FoundInstance> scanDefaultLocations()
 #endif
     scanInstancesFolder(out, FS::PathCombine(home, "ATLauncher/instances"));
 
+    // Technic
+#if defined(Q_OS_MACOS)
+    scanInstancesFolder(out, FS::PathCombine(appData, "techniclauncher/modpacks"));
+#else
+    scanInstancesFolder(out, FS::PathCombine(appData, ".technic/modpacks"));
+#endif
+    scanInstancesFolder(out, FS::PathCombine(home, ".technic/modpacks"));
+
     // XMCL
     scanInstancesFolder(out, FS::PathCombine(appData, "xmcl/instances"));
     scanInstancesFolder(out, FS::PathCombine(home, ".xmcl/instances"));
@@ -683,7 +715,7 @@ QList<FoundInstance> scanPath(const QString& path)
     // an instances folder, or a root that has one under a common name
     scanInstancesFolder(out, path);
     for (const QString& sub : { QStringLiteral("instances"), QStringLiteral("Instances"), QStringLiteral("data/instances"),
-                                QStringLiteral("minecraft/Instances"), QStringLiteral("profiles") })
+                                QStringLiteral("minecraft/Instances"), QStringLiteral("profiles"), QStringLiteral("modpacks") })
         scanInstancesFolder(out, FS::PathCombine(path, sub));
     // a single instance
     addUnique(out, parseMultiMCInstance(path));
@@ -692,6 +724,7 @@ QList<FoundInstance> scanPath(const QString& path)
     addUnique(out, parseXMCLInstance(path));
     addUnique(out, parseGDLauncherInstance(path));
     addUnique(out, parseGDLauncherLegacyInstance(path));
+    addUnique(out, parseTechnicInstance(path));
     return out;
 }
 
