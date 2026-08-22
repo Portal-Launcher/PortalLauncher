@@ -300,14 +300,37 @@ void HttpMetaCache::SaveNow()
     // Prune old gallery images: browsing mods adds a cache entry per viewed
     // image and nothing else ever removes them, so the index would grow
     // without bound (and it is parsed on the GUI thread at startup).
-    const qint64 cutoffMs = QDateTime::currentMSecsSinceEpoch() - 30LL * 24 * 3600 * 1000;
-    for (auto& group : m_entries) {
+    // The same goes for modpack archives, pack logos and mod downloads kept
+    // by the modpack installers: they only matter while a pack is being
+    // installed or browsed, yet they used to stay forever (over a gigabyte on
+    // a busy install). Mods themselves live on in the instances and in the
+    // content pool, so nothing is lost by letting these go after two weeks.
+    static const QStringList s_downloadBases = { "FlamePacks",      "FlameMods",       "ModrinthPacks",
+                                                 "ModrinthModpacks", "FTBPacks",        "ATLauncherPacks",
+                                                 "TechnicPacks" };
+    static const QStringList s_downloadPrefixes = { "edge.forgecdn.net/", "cdn.modrinth.com/" };
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 imageCutoffMs = now - 30LL * 24 * 3600 * 1000;
+    const qint64 downloadCutoffMs = now - 14LL * 24 * 3600 * 1000;
+    for (auto groupIt = m_entries.begin(); groupIt != m_entries.end(); ++groupIt) {
+        auto& group = groupIt.value();
+        const bool downloadBase = s_downloadBases.contains(groupIt.key());
         auto& list = group.entry_list;
         for (auto it = list.begin(); it != list.end();) {
             const auto& entry = it.value();
-            if (entry->m_relativePath.startsWith(QLatin1String("images/")) && !entry->m_stale &&
-                entry->m_local_changed_timestamp > 0 && entry->m_local_changed_timestamp < cutoffMs) {
-                FS::deletePath(FS::PathCombine(group.base_path, entry->m_relativePath));
+            const QString& rel = entry->m_relativePath;
+            qint64 cutoffMs = 0;
+            if (rel.startsWith(QLatin1String("images/")))
+                cutoffMs = imageCutoffMs;
+            else if (downloadBase)
+                cutoffMs = downloadCutoffMs;
+            else {
+                for (const auto& prefix : s_downloadPrefixes)
+                    if (rel.startsWith(prefix))
+                        cutoffMs = downloadCutoffMs;
+            }
+            if (cutoffMs > 0 && !entry->m_stale && entry->m_local_changed_timestamp > 0 && entry->m_local_changed_timestamp < cutoffMs) {
+                FS::deletePath(FS::PathCombine(group.base_path, rel));
                 it = list.erase(it);
             } else {
                 ++it;
