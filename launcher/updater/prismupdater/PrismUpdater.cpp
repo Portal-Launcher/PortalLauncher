@@ -21,6 +21,8 @@
  */
 
 #include "PrismUpdater.h"
+#include "updater/UpdateManifest.h"
+#include "updater/UpdateTagFilter.h"
 #include "BuildConfig.h"
 #include "ui/dialogs/ProgressDialog.h"
 
@@ -513,22 +515,13 @@ static QStringList requiredPayloadFiles()
  */
 static QStringList readManifest(const QString& manifest_path)
 {
-    QStringList entries;
     if (!QFileInfo(manifest_path).isFile())
-        return entries;
+        return {};
     try {
-        const auto contents = QString::fromUtf8(FS::read(manifest_path));
-        for (const auto& line : contents.split(QChar::LineFeed)) {
-            const auto entry = line.trimmed();
-            if (entry.isEmpty())
-                continue;
-            if (entry.startsWith('/') || entry.contains(QStringLiteral("..")) || QDir::isAbsolutePath(entry))
-                continue;
-            entries.append(entry);
-        }
+        return parseUpdateManifest(QString::fromUtf8(FS::read(manifest_path)));
     } catch (FS::FileSystemException&) {
+        return {};
     }
-    return entries;
 }
 
 void PrismUpdaterApp::moveAndFinishUpdate(QDir target)
@@ -688,12 +681,6 @@ void PrismUpdaterApp::printReleases()
 // also carries the legacy "11.0.3-shared" release from before the fork got its
 // own versioning; its tag would win every version comparison forever, so only
 // purely numeric tags count as update candidates.
-static bool isUpdateCandidateTag(const QString& tag)
-{
-    static const QRegularExpression s_plainVersion("^v?\\d+(\\.\\d+)*$");
-    return s_plainVersion.match(tag).hasMatch();
-}
-
 QList<GitHubRelease> PrismUpdaterApp::nonDraftReleases()
 {
     QList<GitHubRelease> nonDraft;
