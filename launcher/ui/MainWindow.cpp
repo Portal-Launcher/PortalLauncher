@@ -87,8 +87,10 @@
 #include <minecraft/MinecraftInstance.h>
 #include <minecraft/auth/AccountList.h>
 #include <net/ApiDownload.h>
+#include <net/ContentPoolDedupTask.h>
 #include <net/NetJob.h>
 #include <news/NewsChecker.h>
+#include <StringUtils.h>
 #include <tools/BaseProfiler.h>
 #include <updater/ExternalUpdater.h>
 #include "InstanceWindow.h"
@@ -1711,6 +1713,61 @@ void MainWindow::on_actionClearMetadata_triggered()
     }
 
     APPLICATION->metacache()->SaveNow();
+}
+
+void MainWindow::on_actionReclaimSpace_triggered()
+{
+    QStringList roots;
+    auto* list = APPLICATION->instances();
+    for (int i = 0; i < list->count(); i++)
+        roots.append(list->at(i)->instanceRoot());
+
+    // Step 1: find out what there is, and tell the user before changing anything.
+    ContentPoolDedupTask scan(roots);
+    {
+        ProgressDialog dialog(this);
+        dialog.setSkipButton(true, tr("Stop"));
+        if (dialog.execWithTask(&scan) != QDialog::Accepted)
+            return;
+    }
+    const auto plan = scan.plan();
+    if (plan.isEmpty()) {
+        CustomMessageBox::selectable(this, tr("Reclaim Disk Space"),
+                                     tr("No mods, resource packs, shader packs or data packs are duplicated between your "
+                                        "instances. There is nothing to reclaim."),
+                                     QMessageBox::Information)
+            ->show();
+        return;
+    }
+
+    auto response =
+        CustomMessageBox::selectable(
+            this, tr("Reclaim Disk Space"),
+            tr("%1 files exist in more than one instance. Storing each of them once would free %2.\n\n"
+               "Every instance keeps the same files at the same names and keeps working exactly as before; they just "
+               "share the bytes on disk. Files in use by a running game are skipped.")
+                .arg(QString::number(plan.files), StringUtils::humanReadableFileSize(plan.bytes)),
+            QMessageBox::Question, QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok)
+            ->exec();
+    if (response != QMessageBox::Ok)
+        return;
+
+    // Step 2: link them.
+    ContentPoolDedupTask apply(plan);
+    {
+        ProgressDialog dialog(this);
+        dialog.setSkipButton(true, tr("Stop"));
+        dialog.execWithTask(&apply);
+    }
+
+    const auto result = apply.result();
+    QString summary = tr("Freed %1 by sharing %2 duplicated files between instances.")
+                          .arg(StringUtils::humanReadableFileSize(result.bytesFreed), QString::number(result.filesPooled));
+    if (result.filesSkipped > 0)
+        summary += "\n\n" + tr("%1 files were skipped because they were in use or could not be linked. Run this again when no "
+                               "game is open.")
+                                .arg(result.filesSkipped);
+    CustomMessageBox::selectable(this, tr("Reclaim Disk Space"), summary, QMessageBox::Information)->show();
 }
 
 #ifdef Q_OS_MAC

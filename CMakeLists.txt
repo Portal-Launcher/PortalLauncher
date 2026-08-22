@@ -301,6 +301,9 @@ if(Launcher_QT_VERSION_MAJOR EQUAL 6)
     find_package(Qt6 6.4 REQUIRED COMPONENTS Core CoreTools Widgets Concurrent Network Test Xml NetworkAuth OpenGL WebSockets)
     find_package(Qt6 COMPONENTS DBus)
     list(APPEND Launcher_QT_DBUS Qt6::DBus)
+    # Optional: reading the Modrinth App's instance database on the
+    # "Other Launchers" import page. Everything else works without it.
+    find_package(Qt6 COMPONENTS Sql)
 else()
     message(FATAL_ERROR "Qt version ${Launcher_QT_VERSION_MAJOR} is not supported")
 endif()

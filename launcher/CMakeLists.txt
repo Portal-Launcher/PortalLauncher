@@ -119,6 +119,8 @@ set(NET_SOURCES
     net/ChecksumValidator.h
     net/ContentCache.cpp
     net/ContentCache.h
+    net/ContentPoolDedupTask.cpp
+    net/ContentPoolDedupTask.h
     net/Download.cpp
     net/Download.h
     net/DummySink.h
@@ -330,6 +332,8 @@ set(MINECRAFT_SOURCES
     minecraft/mod/ModDetails.h
     minecraft/mod/ModFolderModel.h
     minecraft/mod/ModFolderModel.cpp
+    minecraft/mod/ModGroups.h
+    minecraft/mod/ModGroups.cpp
     minecraft/mod/ModUpdateBackup.h
     minecraft/mod/ModUpdateBackup.cpp
     minecraft/mod/Resource.h
@@ -540,6 +544,11 @@ set(FTB_SOURCES
     modplatform/import_ftb/PackHelpers.h
     modplatform/import_ftb/PackHelpers.cpp
 
+    modplatform/import_launchers/LauncherScanner.h
+    modplatform/import_launchers/LauncherScanner.cpp
+    modplatform/import_launchers/LauncherImportTask.h
+    modplatform/import_launchers/LauncherImportTask.cpp
+
     modplatform/ftb/FTBPackInstallTask.h
     modplatform/ftb/FTBPackInstallTask.cpp
     modplatform/ftb/FTBPackManifest.h
@@ -589,6 +598,8 @@ set(MODRINTH_SOURCES
     modplatform/modrinth/shared/ModrinthSignInTask.h
     updater/ForkUpdater.cpp
     updater/ForkUpdater.h
+    updater/UpdateManifest.h
+    updater/UpdateTagFilter.h
 )
 
 set(PACKWIZ_SOURCES
@@ -635,6 +646,8 @@ set(LINKEXE_SOURCES
 )
 
 set(PRISMUPDATER_SOURCES
+    updater/UpdateManifest.h
+    updater/UpdateTagFilter.h
     updater/prismupdater/PrismUpdater.h
     updater/prismupdater/PrismUpdater.cpp
     updater/prismupdater/UpdaterDialogs.h
@@ -1056,6 +1069,11 @@ SET(LAUNCHER_SOURCES
     ui/pages/modplatform/import_ftb/ListModel.h
     ui/pages/modplatform/import_ftb/ListModel.cpp
 
+    ui/pages/modplatform/import_launchers/ImportLaunchersPage.cpp
+    ui/pages/modplatform/import_launchers/ImportLaunchersPage.h
+    ui/pages/modplatform/import_launchers/ImportLaunchersModel.h
+    ui/pages/modplatform/import_launchers/ImportLaunchersModel.cpp
+
     ui/pages/modplatform/flame/FlameModel.cpp
     ui/pages/modplatform/flame/FlameModel.h
     ui/pages/modplatform/flame/FlamePage.cpp
@@ -1291,6 +1309,7 @@ qt_wrap_ui(LAUNCHER_UI
     ui/pages/modplatform/flame/FlamePage.ui
     ui/pages/modplatform/legacy_ftb/Page.ui
     ui/pages/modplatform/import_ftb/ImportFTBPage.ui
+    ui/pages/modplatform/import_launchers/ImportLaunchersPage.ui
     ui/pages/modplatform/ImportPage.ui
     ui/pages/modplatform/OptionalModDialog.ui
     ui/pages/modplatform/ftb/FtbPage.ui
@@ -1395,6 +1414,13 @@ target_link_libraries(Launcher_logic
     BuildConfig
     Qt${QT_VERSION_MAJOR}::Widgets
 )
+
+# Qt Sql is only used to read the Modrinth App's instance database when
+# importing from it; builds without it just skip that launcher.
+if(TARGET Qt${QT_VERSION_MAJOR}::Sql)
+    target_link_libraries(Launcher_logic Qt${QT_VERSION_MAJOR}::Sql)
+    target_compile_definitions(Launcher_logic PUBLIC LAUNCHER_HAS_QTSQL)
+endif()
 
 if(TARGET PkgConfig::libqrencode)
     target_link_libraries(Launcher_logic PkgConfig::libqrencode)
@@ -1639,7 +1665,8 @@ endif()
 # NOTE: it seems that this absolutely has to be here, and nowhere else.
 if(WIN32 OR (UNIX AND APPLE))
     if(WIN32)
-        set(QT_DEPLOY_TOOL_OPTIONS "--no-opengl-sw --no-quick-import --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation")
+        # Qt Sql pulls in every database driver plugin; only SQLite is used (Modrinth App import)
+        set(QT_DEPLOY_TOOL_OPTIONS "--no-opengl-sw --no-quick-import --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation --exclude-plugins qsqlodbc,qsqlpsql,qsqlibase,qsqlmimer,qsqloci,qsqlmysql")
     endif()
 
     qt_generate_deploy_script(

@@ -446,19 +446,12 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         const QString dest = keepDisabled ? absDisabled : abs;
 
         // Friends install the same mods; serve repeat downloads from the
-        // local content cache when the hash matches.
+        // local content pool when the hash matches. deploy() re-verifies and
+        // drops corrupted entries, falling through to a fresh download.
         if (!target.sha1.isEmpty()) {
             const QString cached = ContentCache::find("sha1", target.sha1);
-            if (!cached.isEmpty()) {
-                if (Hashing::hash(cached, Hashing::Algorithm::Sha1).compare(target.sha1, Qt::CaseInsensitive) == 0) {
-                    if (QFile::exists(dest))
-                        QFile::remove(dest);
-                    if (FS::ensureFilePathExists(dest) && QFile::copy(cached, dest))
-                        continue;
-                } else {
-                    QFile::remove(cached);  // corrupted entry; fall through to a fresh download
-                }
-            }
+            if (!cached.isEmpty() && ContentCache::deploy(cached, dest, "sha1", target.sha1))
+                continue;
         }
 
         auto download = Net::Download::makeFile(QUrl(target.url), dest);

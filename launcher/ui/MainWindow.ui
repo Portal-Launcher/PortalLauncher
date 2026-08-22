@@ -220,6 +220,7 @@
      <bool>true</bool>
     </property>
     <addaction name="actionClearMetadata"/>
+    <addaction name="actionReclaimSpace"/>
     <addaction name="actionReportBug"/>
     <addaction name="actionViewLog"/>
     <addaction name="actionAddToPATH"/>
@@ -256,7 +257,7 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset theme="cat"/>
+    <iconset theme="centralmods"/>
    </property>
    <property name="text">
     <string>&amp;Meow</string>
@@ -728,6 +729,17 @@
    </property>
    <property name="menuRole">
     <enum>QAction::AboutRole</enum>
+   </property>
+  </action>
+  <action name="actionReclaimSpace">
+   <property name="icon">
+    <iconset theme="centralmods"/>
+   </property>
+   <property name="text">
+    <string>Reclaim Disk &amp;Space</string>
+   </property>
+   <property name="toolTip">
+    <string>Find files duplicated between instances and store them once on disk.</string>
    </property>
   </action>
   <action name="actionClearMetadata">
