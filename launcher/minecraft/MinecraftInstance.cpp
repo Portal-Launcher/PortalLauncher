@@ -580,7 +580,7 @@ QStringList MinecraftInstance::javaArguments()
     // outright if the custom args pick a collector (conflicting collectors are fatal)
     if (settings()->get("OptimizedGcArgs").toBool() && getJavaVersion().major() >= 8 &&
         !JavaCommon::argsSelectGarbageCollector(settings()->get("JvmArgs").toString())) {
-        args.append(JavaCommon::optimizedGcArgs(settings()->get("OptimizedGcPreset").toString()));
+        args.append(JavaCommon::optimizedGcArgs(settings()->get("OptimizedGcPreset").toString(), getJavaVersion().major()));
     }
 
     // custom args go first. we want to override them if we have our own here.

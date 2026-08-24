@@ -39,30 +39,36 @@
 
 #include <QRegularExpression>
 
-QStringList JavaCommon::optimizedGcArgs(const QString& preset)
+QStringList JavaCommon::optimizedGcArgs(const QString& preset, int javaMajor)
 {
-    if (preset == "shenandoah") {
+    // Shenandoah only exists from Java 11 on; emitting the flag on an older
+    // JVM aborts the launch with "Unrecognized VM option". Falling back to G1
+    // beats a cryptic crash the user cannot connect to a settings checkbox.
+    if (preset == "shenandoah" && javaMajor >= 11) {
         return { "-XX:+UnlockExperimentalVMOptions", "-XX:+UseShenandoahGC", "-XX:+ParallelRefProcEnabled", "-XX:+DisableExplicitGC",
                  "-XX:+PerfDisableSharedMem" };
     }
     // G1 preset, derived from Aikar's flags
-    return { "-XX:+UseG1GC",
-             "-XX:+UnlockExperimentalVMOptions",
-             "-XX:+ParallelRefProcEnabled",
-             "-XX:MaxGCPauseMillis=200",
-             "-XX:+DisableExplicitGC",
-             "-XX:G1NewSizePercent=30",
-             "-XX:G1MaxNewSizePercent=40",
-             "-XX:G1HeapRegionSize=8M",
-             "-XX:G1ReservePercent=20",
-             "-XX:G1HeapWastePercent=5",
-             "-XX:G1MixedGCCountTarget=4",
-             "-XX:InitiatingHeapOccupancyPercent=15",
-             "-XX:G1MixedGCLiveThresholdPercent=90",
-             "-XX:G1RSetUpdatingPauseTimePercent=5",
-             "-XX:SurvivorRatio=32",
-             "-XX:MaxTenuringThreshold=1",
-             "-XX:+PerfDisableSharedMem" };
+    QStringList args = { "-XX:+UseG1GC",
+                         "-XX:+UnlockExperimentalVMOptions",
+                         "-XX:+ParallelRefProcEnabled",
+                         "-XX:MaxGCPauseMillis=200",
+                         "-XX:+DisableExplicitGC",
+                         "-XX:G1NewSizePercent=30",
+                         "-XX:G1MaxNewSizePercent=40",
+                         "-XX:G1HeapRegionSize=8M",
+                         "-XX:G1ReservePercent=20",
+                         "-XX:G1HeapWastePercent=5",
+                         "-XX:G1MixedGCCountTarget=4",
+                         "-XX:InitiatingHeapOccupancyPercent=15",
+                         "-XX:G1MixedGCLiveThresholdPercent=90",
+                         "-XX:SurvivorRatio=32",
+                         "-XX:MaxTenuringThreshold=1",
+                         "-XX:+PerfDisableSharedMem" };
+    // Obsolete in JDK 20+, where it only produces a warning per launch.
+    if (javaMajor > 0 && javaMajor < 20)
+        args.insert(args.size() - 3, "-XX:G1RSetUpdatingPauseTimePercent=5");
+    return args;
 }
 
 bool JavaCommon::argsSelectGarbageCollector(const QString& args)

@@ -59,14 +59,31 @@ ModrinthSharedSyncTask::ModrinthSharedSyncTask(BaseInstance* instance, bool soft
 
 bool ModrinthSharedSyncTask::abort()
 {
+    // No emission here: during the resolution phase API callbacks are still
+    // in flight and bound to this task, so emitting aborted() now would let a
+    // later callback emit succeeded/failed on an already finished task. The
+    // flag makes the next continuation emit aborted() instead, exactly once.
+    m_aborted = true;
     if (m_downloadJob)
-        return m_downloadJob->abort();
-    emitAborted();
+        m_downloadJob->abort();
+    return true;
+}
+
+bool ModrinthSharedSyncTask::bailIfAborted()
+{
+    if (!m_aborted)
+        return false;
+    if (!m_abortEmitted) {
+        m_abortEmitted = true;
+        emitAborted();
+    }
     return true;
 }
 
 void ModrinthSharedSyncTask::softOrFail(const QString& message)
 {
+    if (bailIfAborted())
+        return;
     if (m_soft) {
         setStatus(message);
         emitSucceeded();
@@ -97,6 +114,8 @@ void ModrinthSharedSyncTask::executeTask()
 
     setStatus(tr("Checking for shared pack updates…"));
     ModrinthShared::getLatestVersion(this, m_attachment.id, [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             if (res.status == 404)
                 softOrFail(tr("The shared instance was deleted by its owner."));
@@ -159,6 +178,8 @@ void ModrinthSharedSyncTask::resolveNextVersionChunk()
     const QStringList chunk = m_versionIdsPending.mid(m_versionChunkIndex * CHUNK, CHUNK);
     m_versionChunkIndex++;
     ModrinthShared::getVersionsBulk(this, chunk, [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             softOrFail(res.error);
             return;
@@ -172,12 +193,17 @@ void ModrinthSharedSyncTask::resolveNextVersionChunk()
 void ModrinthSharedSyncTask::resolveProjects()
 {
     QStringList projectIds;
+    QSet<QString> seenProjects;
     for (const auto& value : m_resolvedVersions) {
         const QString id = value.toObject().value("project_id").toString();
-        if (!id.isEmpty() && !projectIds.contains(id))
+        if (!id.isEmpty() && !seenProjects.contains(id)) {
+            seenProjects.insert(id);
             projectIds.append(id);
+        }
     }
     ModrinthShared::getProjectsBulk(this, projectIds, [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             softOrFail(res.error);
             return;
@@ -204,6 +230,8 @@ void ModrinthSharedSyncTask::fetchShareMeta()
         return;
     }
     ModrinthShared::fetchBytes(this, QUrl(m_shareMetaUrl), [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (res.ok && !res.body.isEmpty()) {
             const auto root = QJsonDocument::fromJson(res.body).object();
             const auto optional = root.value("optional").toObject();
@@ -218,6 +246,8 @@ void ModrinthSharedSyncTask::fetchShareMeta()
 
 void ModrinthSharedSyncTask::buildTargetsAndDownload()
 {
+    if (bailIfAborted())
+        return;
     QHash<QString, QString> projectTypeById;
     for (const auto& value : m_resolvedProjects) {
         const auto obj = value.toObject();
@@ -412,12 +442,22 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         }
     }
 
-    // Delete previously managed files that are gone from the share.
+    // Delete previously managed files that are gone from the share. A file a
+    // locked disk keeps alive (game running, antivirus, cloud sync) stays
+    // tracked so the next sync retries instead of orphaning it forever.
+    m_removalCarryover.clear();
     for (const auto& old : m_attachment.managedFiles) {
         if (targetRels.contains(old.rel))
             continue;
-        if (!QFile::remove(FS::PathCombine(gameRoot, old.rel)))
-            QFile::remove(FS::PathCombine(gameRoot, old.rel + ".disabled"));
+        const QString abs = FS::PathCombine(gameRoot, old.rel);
+        const QString absDisabled = FS::PathCombine(gameRoot, old.rel + ".disabled");
+        QFile::remove(abs);
+        QFile::remove(absDisabled);
+        if (QFile::exists(abs) || QFile::exists(absDisabled)) {
+            m_removalCarryover.append(old);
+            m_changeLog.append(tr("Could not remove %1 (file in use) - it will be retried next time")
+                                   .arg(QFileInfo(old.rel).fileName()));
+        }
     }
 
     // No explicit limit: NetJob uses the NumberOfConcurrentDownloads setting.
@@ -462,7 +502,13 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
         m_downloadJob->addNetAction(download);
         queued++;
     }
-    if (!m_configBundleUrl.isEmpty() && m_tempDir.isValid()) {
+    if (!m_configBundleUrl.isEmpty()) {
+        if (!m_tempDir.isValid()) {
+            // Skipping the configs but recording the version as applied would
+            // mean they never arrive; fail so the update runs again.
+            softOrFail(tr("Could not create a temporary folder for the shared config files."));
+            return;
+        }
         m_downloadJob->addNetAction(
             Net::Download::makeFile(QUrl(m_configBundleUrl), FS::PathCombine(m_tempDir.path(), "configs.zip")));
         queued++;
@@ -475,7 +521,10 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
     setStatus(tr("Downloading %1 files…").arg(queued));
     connect(m_downloadJob.get(), &Task::succeeded, this, &ModrinthSharedSyncTask::afterDownloads);
     connect(m_downloadJob.get(), &Task::failed, this, [this](QString reason) { softOrFail(reason); });
-    connect(m_downloadJob.get(), &Task::aborted, this, [this]() { emitAborted(); });
+    connect(m_downloadJob.get(), &Task::aborted, this, [this]() {
+        m_aborted = true;
+        bailIfAborted();
+    });
     connect(m_downloadJob.get(), &Task::progress, this,
             [this](qint64 current, qint64 total) { setProgress(current, total); });
     m_downloadJob->start();
@@ -483,6 +532,8 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
 
 void ModrinthSharedSyncTask::afterDownloads()
 {
+    if (bailIfAborted())
+        return;
     // Every download was hash-validated by the job; remember them for other
     // instances and future joins.
     for (const auto& downloaded : m_downloadedFiles)
@@ -496,6 +547,8 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
 {
     // Mirror the owner's instance icon locally (best-effort, never fatal).
     ModrinthShared::getInstanceInfo(this, m_attachment.id, [this, next](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         m_attachment.iconCheckedAt = QDateTime::currentSecsSinceEpoch();
         const QString iconUrl = res.ok && res.json.isObject() ? res.json.object().value("icon").toString() : QString();
         if (iconUrl.isEmpty() || !isTrustedDownloadUrl(QUrl(iconUrl))) {
@@ -503,6 +556,8 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
             return;
         }
         ModrinthShared::fetchBytes(this, QUrl(iconUrl), [this, next](const ModrinthShared::Response& iconRes) {
+            if (bailIfAborted())
+                return;
             if (!iconRes.ok || iconRes.body.isEmpty()) {
                 next();
                 return;
@@ -544,13 +599,15 @@ void ModrinthSharedSyncTask::applyConfigBundle(std::function<void()> next)
     const QString configRoot = FS::PathCombine(m_instance->gameRoot(), "config");
     FS::ensureFolderPathExists(configRoot);
     auto extracted = MMCZip::extractDir(zipPath, configRoot);
-    if (extracted) {
-        m_attachment.managedConfigs.clear();
-        for (const auto& path : *extracted)
-            m_attachment.managedConfigs.append(QDir(configRoot).relativeFilePath(path));
-    } else {
-        setStatus(tr("Warning: could not apply the shared config bundle."));
+    if (!extracted) {
+        // Recording the version as applied anyway would mean the configs
+        // silently never arrive; fail so the whole update runs again.
+        softOrFail(tr("The shared config files could not be applied. The update will run again next time."));
+        return;
     }
+    m_attachment.managedConfigs.clear();
+    for (const auto& path : *extracted)
+        m_attachment.managedConfigs.append(QDir(configRoot).relativeFilePath(path));
     next();
 }
 
@@ -567,6 +624,9 @@ void ModrinthSharedSyncTask::finish()
         mf.optionalKey = target.optionalKey;
         m_attachment.managedFiles.append(mf);
     }
+    // Files a locked disk would not let us delete stay tracked, so the next
+    // sync retries the removal instead of orphaning them forever.
+    m_attachment.managedFiles.append(m_removalCarryover);
 
     // Mirror the owner's optional lists so the Sharing page can describe them.
     m_attachment.optionalProjects = QStringList(m_optionalProjects.begin(), m_optionalProjects.end());
@@ -591,9 +651,22 @@ void ModrinthSharedSyncTask::finish()
     };
     if (loaderUids.contains(loader) && !loaderVersion.isEmpty()) {
         const QString uid = loaderUids[loader];
-        if (profile->getComponent(uid) && profile->getComponentVersion(uid) != loaderVersion) {
-            m_changeLog.append(tr("%1 loader: %2 to %3").arg(loader, profile->getComponentVersion(uid), loaderVersion));
-            profile->setComponentVersion(uid, loaderVersion);
+        if (profile->getComponent(uid)) {
+            if (profile->getComponentVersion(uid) != loaderVersion) {
+                m_changeLog.append(tr("%1 loader: %2 to %3").arg(loader, profile->getComponentVersion(uid), loaderVersion));
+                profile->setComponentVersion(uid, loaderVersion);
+            }
+        } else {
+            // The owner switched loaders (say Fabric to NeoForge). Keeping the
+            // old loader while downloading the new loader's mods would leave a
+            // pack where nothing loads; swap the component like a fresh join
+            // would have installed it.
+            for (auto it = loaderUids.constBegin(); it != loaderUids.constEnd(); ++it) {
+                if (it.value() != uid && profile->getComponent(it.value()))
+                    profile->remove(it.value());
+            }
+            profile->setComponentVersion(uid, loaderVersion, true);
+            m_changeLog.append(tr("Loader switched to %1 %2").arg(loader, loaderVersion));
         }
     }
     profile->saveNow();
@@ -603,7 +676,14 @@ void ModrinthSharedSyncTask::finish()
         m_attachment.lastChangeLog = m_changeLog;
         m_attachment.lastChangeVersion = m_attachment.appliedVersion;
     }
-    m_attachment.save(m_instance->instanceRoot());
+    if (!m_attachment.save(m_instance->instanceRoot())) {
+        // The content is on disk but the applied version is not recorded, so
+        // the whole update will run again next launch. Saying "updated!"
+        // would hide that something is wrong with the instance folder.
+        softOrFail(tr("The update was applied, but recording it failed (is the instance folder writable?). "
+                      "It will re-apply on the next launch."));
+        return;
+    }
     m_updated = true;
     setStatus(tr("Shared pack updated to version %1.").arg(m_attachment.appliedVersion));
     emitSucceeded();

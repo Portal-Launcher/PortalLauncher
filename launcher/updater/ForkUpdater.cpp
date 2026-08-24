@@ -29,12 +29,24 @@ QString scriptPath()
 
 bool available()
 {
+#ifndef Q_OS_WIN
+    // The upgrade script is PowerShell; other platforms use their native
+    // update paths (AppImage self-update, package managers).
+    return false;
+#else
     const QString path = scriptPath();
     return !path.isEmpty() && QFileInfo(path).isFile();
+#endif
 }
 
 static void launchUpgradeAndQuit(QWidget* parent)
 {
+    if (!APPLICATION->updatesAreAllowed()) {
+        QMessageBox::warning(parent, QObject::tr("Game is running"),
+                             QObject::tr("Close the running game first - updating quits the launcher, which would "
+                                         "take the game down with it."));
+        return;
+    }
     if (!QProcess::startDetached("powershell.exe", { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath(),
                                                      "-WaitForExit", "-Relaunch" })) {
         QMessageBox::warning(parent, QObject::tr("Update failed"),

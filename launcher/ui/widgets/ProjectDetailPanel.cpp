@@ -80,15 +80,18 @@ QString sideToText(ModPlatform::Side side)
     }
 }
 
-QColor versionTypeColor(const ModPlatform::IndexedVersionType& type)
+QColor versionTypeColor(const ModPlatform::IndexedVersionType& type, const QPalette& palette)
 {
+    // Two shades per type: the brighter one for dark bases, a darker one that
+    // keeps enough contrast on light themes (the fork-wide theme rule).
+    const bool darkBase = palette.color(QPalette::Base).lightness() < 128;
     switch (static_cast<int>(type)) {
         case static_cast<int>(ModPlatform::IndexedVersionType::Release):
-            return { 0x2E, 0xA5, 0x60 };
+            return darkBase ? QColor(0x2E, 0xA5, 0x60) : QColor(0x1B, 0x7A, 0x43);
         case static_cast<int>(ModPlatform::IndexedVersionType::Beta):
-            return { 0xD6, 0x8F, 0x2E };
+            return darkBase ? QColor(0xD6, 0x8F, 0x2E) : QColor(0x9A, 0x62, 0x0D);
         case static_cast<int>(ModPlatform::IndexedVersionType::Alpha):
-            return { 0xCB, 0x4A, 0x4A };
+            return darkBase ? QColor(0xCB, 0x4A, 0x4A) : QColor(0xA3, 0x2E, 0x2E);
         default:
             return {};
     }
@@ -628,7 +631,7 @@ void ProjectDetailPanel::updateVersions()
         item->setText(0, name);
         item->setToolTip(0, version.version_number);
         item->setText(1, version.version_type.isValid() ? version.version_type.toString() : QString());
-        if (auto color = versionTypeColor(version.version_type); color.isValid()) {
+        if (auto color = versionTypeColor(version.version_type, m_versions->palette()); color.isValid()) {
             item->setForeground(1, color);
         }
         item->setText(2, loaders.join(", "));

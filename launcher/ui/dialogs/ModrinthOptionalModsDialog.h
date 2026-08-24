@@ -11,6 +11,7 @@
 
 class QTreeWidget;
 class QLabel;
+class QPushButton;
 class MinecraftInstance;
 
 class ModrinthOptionalModsDialog : public QDialog {
@@ -27,4 +28,8 @@ class ModrinthOptionalModsDialog : public QDialog {
     MinecraftInstance* m_instance;
     QTreeWidget* m_tree;
     QLabel* m_hint;
+    QPushButton* m_okButton = nullptr;
+    // accept() rebuilds the optional lists from the tree, so saving before the
+    // mod folder was ever scanned would silently wipe them.
+    bool m_modelReady = false;
 };

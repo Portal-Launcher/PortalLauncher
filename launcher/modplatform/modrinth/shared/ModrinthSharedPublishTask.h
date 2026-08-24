@@ -9,7 +9,10 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QTemporaryDir>
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <optional>
 
 #include "ModrinthSharedAttachment.h"
@@ -28,6 +31,8 @@ class ModrinthSharedPublishTask : public Task {
     int pushedVersion() const { return m_pushedVersion; }
     int skippedDisabled() const { return m_skippedDisabled; }
 
+    bool abort() override;
+
    protected:
     void executeTask() override;
 
@@ -41,7 +46,19 @@ class ModrinthSharedPublishTask : public Task {
         QString versionId;  // set when the file is hosted on Modrinth
     };
 
-    void scanContent();
+    struct ScanResult {
+        QList<ContentFile> files;
+        QStringList configPaths;      // relative to <gameRoot>/config
+        QStringList configHashLines;  // "rel:sha1" per selected config file
+        int skippedDisabled = 0;
+    };
+
+    /** True when the user aborted; emits aborted() exactly once. Call at the
+     *  top of every async continuation. */
+    bool bailIfAborted();
+    /** Worker-thread body: everything it needs arrives as value copies. */
+    ScanResult scanContent(const QString& gameRoot, const QString& instanceRoot, const QString& configSpec);
+    void afterScan(const ScanResult& scan);
     void classifyNextChunk();
     void afterClassify();
     void ensureRemoteInstance(std::function<void()> next);
@@ -52,7 +69,7 @@ class ModrinthSharedPublishTask : public Task {
     void finish(int version);
 
     QString computeSignature() const;
-    QByteArray buildConfigBundle();
+    QString buildConfigBundleFile();
     QByteArray buildShareMetaBytes() const;
     QString optionalListsFingerprint() const;
 
@@ -75,6 +92,11 @@ class ModrinthSharedPublishTask : public Task {
     QString m_loaderVersion;
     QString m_environment;  // gameVersion/loader/loaderVersion|configSpec
     QString m_signature;    // full content signature, computed once per run
+    QStringList m_configHashLines;  // from the scan; feeds computeSignature
+
+    std::atomic_bool m_aborted{ false };
+    bool m_abortEmitted = false;
+    std::unique_ptr<QTemporaryDir> m_configTempDir;  // holds the config bundle during upload
 
     QJsonArray m_uploads;  // external_files from the createVersion response
     int m_uploadIndex = 0;

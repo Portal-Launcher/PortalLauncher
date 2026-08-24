@@ -14,6 +14,7 @@
 #include <QPair>
 #include <QSet>
 #include <QTemporaryDir>
+#include <atomic>
 
 #include "ModrinthSharedAttachment.h"
 #include "net/NetJob.h"
@@ -60,10 +61,16 @@ class ModrinthSharedSyncTask : public Task {
     void finish();
 
     void softOrFail(const QString& message);
+    /** True when the user aborted; emits aborted() exactly once. Call at the
+     *  top of every async continuation so a task that was aborted during the
+     *  resolution phase never emits succeeded or failed afterwards. */
+    bool bailIfAborted();
 
     MinecraftInstance* m_instance = nullptr;
     bool m_soft = false;
     bool m_updated = false;
+    std::atomic_bool m_aborted{ false };
+    bool m_abortEmitted = false;
 
     ModrinthShared::Attachment m_attachment;
     QJsonObject m_remoteVersion;
@@ -73,6 +80,7 @@ class ModrinthSharedSyncTask : public Task {
     QJsonArray m_resolvedProjects;
 
     QList<TargetFile> m_targets;
+    QList<ModrinthShared::ManagedFile> m_removalCarryover;  // stale files a locked disk kept alive
     QList<QPair<QString, QString>> m_downloadedFiles;  // (path, sha1) fetched this run
     QString m_configBundleUrl;
     QString m_shareMetaUrl;

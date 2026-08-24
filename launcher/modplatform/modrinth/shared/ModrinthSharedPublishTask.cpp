@@ -3,15 +3,19 @@
 
 #include <QBuffer>
 #include <QCryptographicHash>
+#include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFutureWatcher>
 #include <QIcon>
 #include <QImage>
 #include <QJsonDocument>
 #include <QPainter>
 #include <QPixmap>
-#include <QTemporaryDir>
+#include <QSaveFile>
+#include <QtConcurrent>
 
 #include "Application.h"
 #include "FileSystem.h"
@@ -51,6 +55,72 @@ QString hashFileSha1(const QString& path)
     return QString::fromLatin1(hash.result().toHex());
 }
 
+/** SHA1s memoized by (path, size, mtime), persisted in the instance root.
+ *  Every push used to re-read the whole pack; with this, only files that
+ *  actually changed since the last push get hashed again. Only keys touched
+ *  this run are saved back, so entries for deleted files fall away. */
+class HashCache {
+   public:
+    explicit HashCache(const QString& instanceRoot)
+        : m_path(FS::PathCombine(instanceRoot, "portal-hash-cache.json"))
+    {
+        QFile file(m_path);
+        if (!file.open(QIODevice::ReadOnly))
+            return;
+        const auto root = QJsonDocument::fromJson(file.readAll()).object();
+        for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
+            const auto entry = it.value().toObject();
+            Entry cached;
+            cached.size = entry.value("size").toVariant().toLongLong();
+            cached.mtimeMs = entry.value("mtime").toVariant().toLongLong();
+            cached.sha1 = entry.value("sha1").toString();
+            if (!cached.sha1.isEmpty())
+                m_entries.insert(it.key(), cached);
+        }
+    }
+
+    QString sha1For(const QString& key, const QFileInfo& info)
+    {
+        const qint64 mtimeMs = info.lastModified().toMSecsSinceEpoch();
+        auto it = m_entries.constFind(key);
+        if (it != m_entries.constEnd() && it->size == info.size() && it->mtimeMs == mtimeMs) {
+            m_touched.insert(key, *it);
+            return it->sha1;
+        }
+        const QString sha1 = hashFileSha1(info.absoluteFilePath());
+        if (!sha1.isEmpty())
+            m_touched.insert(key, { info.size(), mtimeMs, sha1 });
+        return sha1;
+    }
+
+    void save() const
+    {
+        QJsonObject root;
+        for (auto it = m_touched.constBegin(); it != m_touched.constEnd(); ++it) {
+            QJsonObject entry;
+            entry["size"] = it->size;
+            entry["mtime"] = it->mtimeMs;
+            entry["sha1"] = it->sha1;
+            root[it.key()] = entry;
+        }
+        QSaveFile file(m_path);
+        if (!file.open(QIODevice::WriteOnly))
+            return;
+        file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+        file.commit();
+    }
+
+   private:
+    struct Entry {
+        qint64 size = -1;
+        qint64 mtimeMs = 0;
+        QString sha1;
+    };
+    QString m_path;
+    QHash<QString, Entry> m_entries;
+    QHash<QString, Entry> m_touched;
+};
+
 }  // namespace
 
 // Carries fork-specific share metadata (currently the optional-mods lists) as
@@ -64,8 +134,29 @@ ModrinthSharedPublishTask::ModrinthSharedPublishTask(BaseInstance* instance, boo
     m_instance = dynamic_cast<MinecraftInstance*>(instance);
 }
 
+bool ModrinthSharedPublishTask::abort()
+{
+    // The scan worker polls this flag between files, and every network
+    // continuation checks it on entry; aborted() is emitted from there so it
+    // can never race a success or failure emission.
+    m_aborted = true;
+    return true;
+}
+
+bool ModrinthSharedPublishTask::bailIfAborted()
+{
+    if (!m_aborted)
+        return false;
+    if (!m_abortEmitted) {
+        m_abortEmitted = true;
+        emitAborted();
+    }
+    return true;
+}
+
 void ModrinthSharedPublishTask::executeTask()
 {
+    setAbortable(true);
     if (!m_instance) {
         emitFailed(tr("Only Minecraft instances can be shared."));
         return;
@@ -140,7 +231,30 @@ void ModrinthSharedPublishTask::executeTask()
 
     setStatus(tr("Scanning instance content…"));
     setProgress(1, 6);
-    scanContent();
+    // Hashing a big pack means reading hundreds of megabytes; on the calling
+    // thread that freezes the whole window (Play press with auto-push on,
+    // every manual push). Run it on the pool and continue when it lands.
+    auto* watcher = new QFutureWatcher<ScanResult>(this);
+    connect(watcher, &QFutureWatcher<ScanResult>::finished, this, [this, watcher]() {
+        const ScanResult scan = watcher->result();
+        watcher->deleteLater();
+        if (bailIfAborted())
+            return;
+        afterScan(scan);
+    });
+    const QString gameRoot = m_instance->gameRoot();
+    const QString instanceRoot = m_instance->instanceRoot();
+    const QString scanConfigSpec = m_attachment.configSpec;
+    watcher->setFuture(QtConcurrent::run(
+        [this, gameRoot, instanceRoot, scanConfigSpec]() { return scanContent(gameRoot, instanceRoot, scanConfigSpec); }));
+}
+
+void ModrinthSharedPublishTask::afterScan(const ScanResult& scan)
+{
+    m_files = scan.files;
+    m_configPaths = scan.configPaths;
+    m_configHashLines = scan.configHashLines;
+    m_skippedDisabled = scan.skippedDisabled;
 
     m_pendingHashes.clear();
     for (const auto& file : m_files)
@@ -152,19 +266,24 @@ void ModrinthSharedPublishTask::executeTask()
     classifyNextChunk();
 }
 
-void ModrinthSharedPublishTask::scanContent()
+ModrinthSharedPublishTask::ScanResult ModrinthSharedPublishTask::scanContent(const QString& gameRoot,
+                                                                             const QString& instanceRoot,
+                                                                             const QString& configSpec)
 {
-    const QString gameRoot = m_instance->gameRoot();
-    m_files.clear();
-    m_skippedDisabled = 0;
+    // Runs on a worker thread: everything it needs arrived as value copies,
+    // and the only task state it touches is the atomic abort flag.
+    ScanResult result;
+    HashCache hashCache(instanceRoot);
     for (const auto& folderType : FOLDER_TYPES) {
         QDir dir(FS::PathCombine(gameRoot, folderType.folder));
         if (!dir.exists())
             continue;
         for (const auto& info : dir.entryInfoList(QDir::Files)) {
+            if (m_aborted)
+                return result;
             const QString name = info.fileName();
             if (name.endsWith(".disabled", Qt::CaseInsensitive)) {
-                m_skippedDisabled++;
+                result.skippedDisabled++;
                 continue;
             }
             if (name == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
@@ -176,15 +295,14 @@ void ModrinthSharedPublishTask::scanContent()
             file.absPath = info.absoluteFilePath();
             file.type = folderType.type;
             file.size = info.size();
-            file.sha1 = hashFileSha1(file.absPath);
+            file.sha1 = hashCache.sha1For(QString::fromUtf8(folderType.folder) + '/' + name, info);
             if (!file.sha1.isEmpty())
-                m_files.append(file);
+                result.files.append(file);
         }
     }
 
     // Config selection
-    m_configPaths.clear();
-    const QString spec = m_attachment.configSpec;
+    const QString& spec = configSpec;
     if (!spec.isEmpty() && spec != QLatin1String("none")) {
         const QString configRoot = FS::PathCombine(gameRoot, "config");
         QStringList allConfigs;
@@ -201,26 +319,39 @@ void ModrinthSharedPublishTask::scanContent()
         }
         allConfigs.sort();
         if (spec == QLatin1String("all")) {
-            m_configPaths = allConfigs;
+            result.configPaths = allConfigs;
         } else {
             const QStringList prefixes = spec.split(',', Qt::SkipEmptyParts);
             for (const auto& rel : allConfigs) {
                 for (auto prefix : prefixes) {
                     prefix = prefix.trimmed();
                     if (!prefix.isEmpty() && rel.startsWith(prefix, Qt::CaseInsensitive)) {
-                        m_configPaths.append(rel);
+                        result.configPaths.append(rel);
                         break;
                     }
                 }
             }
         }
-        if (m_configPaths.size() > 4096)
-            m_configPaths = m_configPaths.mid(0, 4096);
+        if (result.configPaths.size() > 4096)
+            result.configPaths = result.configPaths.mid(0, 4096);
+
+        // Hash the selected configs here too, so computeSignature() later is
+        // pure string work instead of a second read of every config file.
+        for (const auto& rel : result.configPaths) {
+            if (m_aborted)
+                return result;
+            const QFileInfo info(FS::PathCombine(configRoot, rel));
+            result.configHashLines.append(rel + ':' + hashCache.sha1For("config/" + rel, info));
+        }
     }
+    hashCache.save();
+    return result;
 }
 
 void ModrinthSharedPublishTask::classifyNextChunk()
 {
+    if (bailIfAborted())
+        return;
     constexpr int CHUNK = 500;
     if (m_hashChunkIndex * CHUNK >= m_pendingHashes.size()) {
         afterClassify();
@@ -229,6 +360,8 @@ void ModrinthSharedPublishTask::classifyNextChunk()
     const QStringList chunk = m_pendingHashes.mid(m_hashChunkIndex * CHUNK, CHUNK);
     m_hashChunkIndex++;
     ModrinthShared::lookupVersionFiles(this, chunk, [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             emitFailed(res.error);
             return;
@@ -282,11 +415,17 @@ void ModrinthSharedPublishTask::ensureRemoteInstance(std::function<void()> next)
 {
     if (m_hasAttachment) {
         ModrinthShared::renameRemoteInstance(this, m_attachment.id, m_instance->name(),
-                                             [next](const ModrinthShared::Response&) { next(); });
+                                             [this, next](const ModrinthShared::Response&) {
+                                                 if (bailIfAborted())
+                                                     return;
+                                                 next();
+                                             });
         return;
     }
     setStatus(tr("Creating the shared instance on Modrinth…"));
     ModrinthShared::createRemoteInstance(this, m_instance->name(), [this, next](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             emitFailed(res.error);
             return;
@@ -303,7 +442,13 @@ void ModrinthSharedPublishTask::ensureRemoteInstance(std::function<void()> next)
         m_attachment.role = "owner";
         m_attachment.appliedVersion = -1;
         m_hasAttachment = true;
-        m_attachment.save(m_instance->instanceRoot());
+        if (!m_attachment.save(m_instance->instanceRoot())) {
+            // Without the attachment file there is no local record of the
+            // share; carrying on would orphan the pack we just created.
+            ModrinthShared::deleteRemoteInstance(this, m_attachment.id, [](const ModrinthShared::Response&) {});
+            emitFailed(tr("Could not save the shared-instance link file in the instance folder."));
+            return;
+        }
         next();
     });
 }
@@ -342,6 +487,8 @@ void ModrinthSharedPublishTask::createRemoteVersion()
     payload["loader_version"] = m_loaderVersion;
 
     ModrinthShared::createVersion(this, m_attachment.id, payload, [this](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (!res.ok) {
             emitFailed(res.error);
             return;
@@ -383,7 +530,7 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
 
     auto onDone = [this, fileName](const ModrinthShared::Response& res) {
         m_activeUploads--;
-        if (m_uploadFailed)
+        if (bailIfAborted() || m_uploadFailed)
             return;
         if (!res.ok) {
             m_uploadFailed = true;
@@ -396,15 +543,17 @@ void ModrinthSharedPublishTask::startOneUpload(const QJsonObject& upload)
     };
 
     if (fileType == QLatin1String("configs")) {
-        const QByteArray bytes = buildConfigBundle();
-        if (bytes.isEmpty()) {
+        const QString bundlePath = buildConfigBundleFile();
+        if (bundlePath.isEmpty()) {
             m_uploadFailed = true;
             emitFailed(tr("Could not build the config bundle."));
             return;
         }
         m_activeUploads++;
         setStatus(tr("Uploading %1 of %2 files…").arg(m_uploadedCount + 1).arg(m_uploads.size()));
-        ModrinthShared::uploadBytes(this, url, bytes, onDone);
+        // Streamed from disk like the jars; config bundles can reach hundreds
+        // of megabytes on config-heavy packs.
+        ModrinthShared::uploadFile(this, url, bundlePath, onDone);
         return;
     }
 
@@ -481,6 +630,8 @@ void ModrinthSharedPublishTask::uploadIconIfChanged(std::function<void()> next)
     }
     setStatus(tr("Uploading the instance icon…"));
     ModrinthShared::uploadIcon(this, m_attachment.id, png, [this, sha1, next](const ModrinthShared::Response& res) {
+        if (bailIfAborted())
+            return;
         if (res.ok)
             m_attachment.iconSha1 = sha1;
         next();
@@ -494,7 +645,11 @@ void ModrinthSharedPublishTask::finish(int version)
     m_attachment.quickFingerprint =
         ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), !m_configPaths.isEmpty());
     m_attachment.lastPushEnvironment = m_environment;
-    m_attachment.save(m_instance->instanceRoot());
+    if (!m_attachment.save(m_instance->instanceRoot())) {
+        // The push itself landed; failing the whole task would be misleading,
+        // but silence would hide that the next push will re-scan everything.
+        qWarning() << "Could not persist the shared-instance state after pushing version" << version;
+    }
     m_pushed = true;
     m_pushedVersion = version;
     setProgress(6, 6);
@@ -513,11 +668,7 @@ QString ModrinthSharedPublishTask::computeSignature() const
         externals.append(file.fileName + ':' + file.type + ':' + file.sha1);
     externals.sort();
     parts << "ext:" + externals.join(',');
-    QStringList configs;
-    for (const auto& rel : m_configPaths) {
-        const QString abs = FS::PathCombine(m_instance->gameRoot(), "config", rel);
-        configs.append(rel + ':' + hashFileSha1(abs));
-    }
+    QStringList configs = m_configHashLines;  // hashed during the scan
     configs.sort();
     parts << "cfg:" + configs.join(',');
     parts << "env:" + m_gameVersion + '/' + m_loader + '/' + m_loaderVersion;
@@ -549,26 +700,23 @@ QByteArray ModrinthSharedPublishTask::buildShareMetaBytes() const
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
-QByteArray ModrinthSharedPublishTask::buildConfigBundle()
+QString ModrinthSharedPublishTask::buildConfigBundleFile()
 {
-    QTemporaryDir tempDir;
-    if (!tempDir.isValid())
+    // The temp dir member keeps the zip alive for the whole streamed upload;
+    // it is cleaned up with the task.
+    m_configTempDir = std::make_unique<QTemporaryDir>();
+    if (!m_configTempDir->isValid())
         return {};
-    const QString zipPath = FS::PathCombine(tempDir.path(), "configs.zip");
+    const QString zipPath = FS::PathCombine(m_configTempDir->path(), "configs.zip");
     const QString configRoot = FS::PathCombine(m_instance->gameRoot(), "config");
-    {
-        MMCZip::ArchiveWriter writer(zipPath);
-        if (!writer.open())
-            return {};
-        for (const auto& rel : m_configPaths) {
-            if (!writer.addFile(FS::PathCombine(configRoot, rel), rel))
-                return {};
-        }
-        if (!writer.close())
+    MMCZip::ArchiveWriter writer(zipPath);
+    if (!writer.open())
+        return {};
+    for (const auto& rel : m_configPaths) {
+        if (!writer.addFile(FS::PathCombine(configRoot, rel), rel))
             return {};
     }
-    QFile zip(zipPath);
-    if (!zip.open(QIODevice::ReadOnly))
+    if (!writer.close())
         return {};
-    return zip.readAll();
+    return zipPath;
 }

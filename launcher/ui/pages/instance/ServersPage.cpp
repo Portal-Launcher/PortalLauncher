@@ -488,24 +488,32 @@ class ServersModel : public QAbstractListModel {
             auto* task = new ServerPingTask(target.address, target.port);
             m_currentQueryTask->addTask(Task::Ptr(task));
 
-            // Update the model when the task is done
-            connect(task, &Task::succeeded, this, [this, task, row]() {
-                if (row >= m_servers.size())
-                    return;
-                auto& server = m_servers[row];
-                server.m_status = Server::Status::Online;
-                server.m_currentPlayers = task->m_outputOnlinePlayers;
-                server.m_maxPlayers = task->m_outputMaxPlayers;
-                server.m_latencyMs = task->m_outputLatencyMs;
-                server.m_version = task->m_outputVersion;
-                server.m_motd = task->m_outputMotd;
-                emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
+            // Update the model when the task is done. Rows are matched by
+            // address at arrival time: add/remove/move can reshuffle the list
+            // while pings are in flight, and a captured row index would then
+            // paint another server's ping and MOTD onto this row.
+            const QString address = server.m_address;
+            connect(task, &Task::succeeded, this, [this, task, address]() {
+                for (int i = 0; i < m_servers.size(); i++) {
+                    auto& server = m_servers[i];
+                    if (server.m_address != address)
+                        continue;
+                    server.m_status = Server::Status::Online;
+                    server.m_currentPlayers = task->m_outputOnlinePlayers;
+                    server.m_maxPlayers = task->m_outputMaxPlayers;
+                    server.m_latencyMs = task->m_outputLatencyMs;
+                    server.m_version = task->m_outputVersion;
+                    server.m_motd = task->m_outputMotd;
+                    emit dataChanged(index(i, 0), index(i, COLUMN_COUNT - 1));
+                }
             });
-            connect(task, &Task::failed, this, [this, row](QString) {
-                if (row >= m_servers.size())
-                    return;
-                m_servers[row].m_status = Server::Status::Offline;
-                emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
+            connect(task, &Task::failed, this, [this, address](QString) {
+                for (int i = 0; i < m_servers.size(); i++) {
+                    if (m_servers[i].m_address != address)
+                        continue;
+                    m_servers[i].m_status = Server::Status::Offline;
+                    emit dataChanged(index(i, 0), index(i, COLUMN_COUNT - 1));
+                }
             });
             row++;
         }

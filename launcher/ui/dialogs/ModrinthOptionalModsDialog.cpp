@@ -47,11 +47,19 @@ ModrinthOptionalModsDialog::ModrinthOptionalModsDialog(MinecraftInstance* instan
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+    m_okButton = buttons->button(QDialogButtonBox::Ok);
+    // OK stays off until the mod folder scan lands: accepting with a tree
+    // built from a never-scanned model would save empty optional lists.
+    m_okButton->setEnabled(false);
 
     auto* model = m_instance->loaderModList();
     // Show what is already loaded right away; refresh once the folder rescan
     // lands (kept edits survive the refresh).
-    connect(model, &ResourceFolderModel::updateFinished, this, &ModrinthOptionalModsDialog::populate);
+    connect(model, &ResourceFolderModel::updateFinished, this, [this]() {
+        m_modelReady = true;
+        m_okButton->setEnabled(true);
+        populate();
+    });
     model->update();
     populate();
 }
@@ -97,7 +105,7 @@ void ModrinthOptionalModsDialog::populate()
 void ModrinthOptionalModsDialog::accept()
 {
     auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
-    if (attachment) {
+    if (attachment && m_modelReady) {
         QStringList projects;
         QStringList files;
         for (int i = 0; i < m_tree->topLevelItemCount(); i++) {

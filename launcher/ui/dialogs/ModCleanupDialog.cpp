@@ -163,6 +163,9 @@ void ModCleanupDialog::scan()
                               "The newest copy of each is kept; review the checkmarks and pick an action.",
                               nullptr, m_groupCount)
                                .arg(extraCopies));
+    } else {
+        // Without this the dialog is an unexplained empty window.
+        m_summary->setText(tr("No duplicates found - every mod in this instance is installed only once."));
     }
     m_disableBtn->setEnabled(m_groupCount > 0);
     m_deleteBtn->setEnabled(m_groupCount > 0);

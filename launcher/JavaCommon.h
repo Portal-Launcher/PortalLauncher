@@ -11,7 +11,9 @@ bool checkJVMArgs(QString args, QWidget* parent);
 
 // Tuned garbage collection flags for the "Optimized garbage collection" setting.
 // Preset ids: "g1" (default), "shenandoah".
-QStringList optimizedGcArgs(const QString& preset);
+// javaMajor gates version-specific flags (Shenandoah needs 11+, one G1 flag
+// became obsolete in 20); pass 0 when the Java version is unknown.
+QStringList optimizedGcArgs(const QString& preset, int javaMajor = 0);
 // True if the given custom JVM args already select a garbage collector; the
 // preset must not be applied on top (the JVM refuses conflicting collectors).
 bool argsSelectGarbageCollector(const QString& args);
