@@ -72,6 +72,8 @@ ModrinthJoinDialog::ModrinthJoinDialog(QWidget* parent) : QDialog(parent)
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setWordWrap(true);
+    // Server error strings land here verbatim; never render them as markup.
+    m_statusLabel->setTextFormat(Qt::PlainText);
     layout->addWidget(m_statusLabel);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
@@ -142,6 +144,7 @@ void ModrinthJoinDialog::loadPendingInvites()
                 joined.insert(att->id);
         }
         m_invitesList->clear();
+        QSet<QString> seen;
         for (const auto& value : res.json.array()) {
             const auto notification = value.toObject();
             const auto body = notification.value("body").toObject();
@@ -149,8 +152,9 @@ void ModrinthJoinDialog::loadPendingInvites()
             if (type != QLatin1String("shared_instance_invite"))
                 continue;
             const QString instanceId = body.value("shared_instance_id").toString();
-            if (instanceId.isEmpty() || joined.contains(instanceId))
+            if (instanceId.isEmpty() || joined.contains(instanceId) || seen.contains(instanceId))
                 continue;
+            seen.insert(instanceId);
             QString name = body.value("shared_instance_name").toString();
             if (name.trimmed().isEmpty())
                 name = tr("Shared pack");

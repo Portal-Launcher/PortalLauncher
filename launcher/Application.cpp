@@ -774,6 +774,10 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("DiscordPresenceEnabled", false);
         m_settings->registerSetting("DiscordClientId", "");
 
+        // Tell Modrinth friends which pack we are playing (toggle lives in the
+        // Friends panel's options menu)
+        m_settings->registerSetting("ModrinthPresenceEnabled", true);
+
         // Update channel: also offer GitHub pre-releases when set
         m_settings->registerSetting("UpdaterBetaChannel", false);
 
@@ -1700,7 +1704,7 @@ void Application::addRunningInstance()
     }
 }
 
-void Application::subRunningInstance()
+void Application::subRunningInstance(const QString& stoppedId)
 {
     if (m_runningInstances == 0) {
         qCritical() << "Something went really wrong and we now have less than 0 running instances... WTF";
@@ -1714,6 +1718,22 @@ void Application::subRunningInstance()
         if (ModrinthShared::isSignedIn())
             ModrinthFriends::get()->setPlaying(QString());
         DiscordPresence::get()->setPlaying(QString());
+    } else {
+        // Something is still running; presence should name a pack that is
+        // actually up, not the one that just closed.
+        QString stillPlaying;
+        for (int i = 0; i < m_instances->count(); i++) {
+            auto* inst = m_instances->at(i);
+            if (inst && inst->isRunning() && inst->id() != stoppedId) {
+                stillPlaying = inst->name();
+                break;
+            }
+        }
+        if (!stillPlaying.isEmpty()) {
+            if (ModrinthShared::isSignedIn())
+                ModrinthFriends::get()->setPlaying(stillPlaying);
+            DiscordPresence::get()->setPlaying(stillPlaying);
+        }
     }
 }
 
@@ -1750,7 +1770,7 @@ void Application::controllerFinished()
         }
     }
     extras.controller.reset();
-    subRunningInstance();
+    subRunningInstance(id);
 
     // quit when there are no more windows.
     if (shouldExitNow()) {

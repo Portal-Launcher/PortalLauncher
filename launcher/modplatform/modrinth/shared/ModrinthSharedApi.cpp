@@ -45,6 +45,14 @@ static void settingSet(const QString& key, const QVariant& value)
     APPLICATION->settings()->getOrRegisterSetting(key, QVariant(QString()))->set(value);
 }
 
+SessionNotifier* SessionNotifier::get()
+{
+    static SessionNotifier* instance = new SessionNotifier();
+    if (!instance->parent() && qApp)
+        instance->setParent(qApp);
+    return instance;
+}
+
 QString token()
 {
     return settingGet("ModrinthToken").toString();
@@ -53,6 +61,11 @@ QString token()
 bool isSignedIn()
 {
     return !token().isEmpty() && !userId().isEmpty();
+}
+
+bool tokenIsSession()
+{
+    return !settingGet("ModrinthShareTokenIsSession").toString().isEmpty();
 }
 
 QString userId()
@@ -73,6 +86,7 @@ void storeSession(const QString& tok, const QString& uid, const QString& uname, 
     settingSet("ModrinthShareTokenIsSession", isSession ? "true" : "");
     settingSet("ModrinthShareRefreshAfter",
                isSession ? QString::number(QDateTime::currentSecsSinceEpoch() + 7 * 24 * 3600) : QString());
+    emit SessionNotifier::get()->sessionChanged();
 }
 
 void clearSession()
@@ -82,6 +96,7 @@ void clearSession()
     settingSet("ModrinthShareUsername", QString());
     settingSet("ModrinthShareTokenIsSession", QString());
     settingSet("ModrinthShareRefreshAfter", QString());
+    emit SessionNotifier::get()->sessionChanged();
 }
 
 void refreshSessionIfNeeded(QObject* ctx)

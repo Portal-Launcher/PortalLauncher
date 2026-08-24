@@ -11,13 +11,25 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QObject>
 #include <QString>
 #include <QUrl>
 #include <functional>
 
-class QObject;
-
 namespace ModrinthShared {
+
+/** Broadcasts session lifecycle so long-lived listeners (friends presence,
+ *  panels) can react to sign-in, sign-out and token changes right away
+ *  instead of discovering them on the next failed request. */
+class SessionNotifier : public QObject {
+    Q_OBJECT
+   public:
+    static SessionNotifier* get();
+
+   signals:
+    /** Emitted after storeSession() and clearSession() have updated settings. */
+    void sessionChanged();
+};
 
 QString serviceBaseUrl();  // https://shared-instances.modrinth.com/v1
 QString siteUrl();         // https://modrinth.com
@@ -43,6 +55,9 @@ enum class Auth {
 // --- Session (stored in global settings, next to the existing ModrinthToken) ---
 QString token();
 bool isSignedIn();
+/** True when the token is a browser-login session (refreshable), false for a
+ *  hand-entered personal token. */
+bool tokenIsSession();
 QString userId();
 QString username();
 void storeSession(const QString& token, const QString& userId, const QString& username, bool isSession);

@@ -14,6 +14,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QSet>
+#include <QTimer>
 
 class ModrinthInviteFriendDialog : public QDialog {
     Q_OBJECT
@@ -42,4 +43,6 @@ class ModrinthInviteFriendDialog : public QDialog {
     QPushButton* m_inviteButton;
     QPushButton* m_copyLinkButton;
     QLabel* m_statusLabel;
+    QTimer m_rebuildTimer;  // coalesces presence-update bursts so the list
+                            // does not drop the user's selection mid-click
 };

@@ -4,12 +4,16 @@
 #include <QAction>
 #include <QApplication>
 #include <QEvent>
-#include <QSignalBlocker>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 #include "Application.h"
 #include "BaseInstance.h"
@@ -17,6 +21,7 @@
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
 #include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/modrinth/shared/ModrinthSignInTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 
@@ -26,7 +31,7 @@ enum ItemRole {
     UsernameRole,
     IncomingRole,
     AcceptedRole,
-    InviteIdRole,
+    InviteIdRole,  // the shared INSTANCE id of a pending invite row
     InviteNameRole,
     // Set on friend rows when what they are playing matches a pending invite
     // or an installed instance (the presence socket only carries the name).
@@ -35,7 +40,34 @@ enum ItemRole {
     LocalInstanceIdRole,
     LocalInstanceNameRole,
 };
+
+/** Overlay a count bubble on the Friends icon so pending invites and requests
+ *  are visible even while the panel is closed. Fixed red with white text reads
+ *  fine on light and dark toolbars alike (the universal badge convention). */
+QIcon badgedIcon(const QIcon& base, int count)
+{
+    QPixmap pm = base.pixmap(32, 32);
+    if (pm.isNull()) {
+        pm = QPixmap(32, 32);
+        pm.fill(Qt::transparent);
+    }
+    QPainter painter(&pm);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const int d = pm.width() * 7 / 16;  // pixmap may be DPR-scaled; derive from it
+    const QRect bubble(pm.width() - d, 0, d, d);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0xe5, 0x48, 0x4d));
+    painter.drawEllipse(bubble);
+    QFont font = painter.font();
+    font.setBold(true);
+    font.setPixelSize(d * 7 / 10);
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    painter.drawText(bubble, Qt::AlignCenter, count > 9 ? QStringLiteral("9+") : QString::number(count));
+    painter.end();
+    return QIcon(pm);
 }
+}  // namespace
 
 FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
 {
@@ -47,6 +79,8 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
     // panel needs its own action or the Friends button cannot be clicked.
     m_viewAction = new QAction(tr("Friends"), this);
     m_viewAction->setCheckable(true);
+    m_viewAction->setIcon(QIcon::fromTheme("accounts"));
+    m_viewAction->setToolTip(tr("Show your Modrinth friends, who is online, and what they are playing."));
     connect(m_viewAction, &QAction::toggled, this, [this](bool checked) {
         if (isVisible() != checked)
             setVisible(checked);
@@ -72,11 +106,35 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
     m_refreshButton->setIcon(QIcon::fromTheme("refresh"));
     m_refreshButton->setAutoRaise(true);
     m_refreshButton->setToolTip(tr("Refresh the friend list and invites"));
+    m_menuButton = new QToolButton(body);
+    m_menuButton->setIcon(QIcon::fromTheme("settings"));
+    m_menuButton->setAutoRaise(true);
+    m_menuButton->setPopupMode(QToolButton::InstantPopup);
+    m_menuButton->setToolTip(tr("Friends options"));
     m_signInButton = new QPushButton(tr("Sign in…"), body);
     headerRow->addWidget(m_headerLabel, 1);
     headerRow->addWidget(m_refreshButton);
+    headerRow->addWidget(m_menuButton);
     headerRow->addWidget(m_signInButton);
     layout->addLayout(headerRow);
+
+    auto* optionsMenu = new QMenu(m_menuButton);
+    auto* presenceAction = optionsMenu->addAction(tr("Share what I'm playing"));
+    presenceAction->setCheckable(true);
+    presenceAction->setToolTip(tr("When off, friends see you online but not which pack you are playing."));
+    connect(presenceAction, &QAction::toggled, this, [](bool checked) {
+        if (APPLICATION->settings()->get("ModrinthPresenceEnabled").toBool() == checked)
+            return;
+        APPLICATION->settings()->set("ModrinthPresenceEnabled", checked);
+        ModrinthFriends::get()->presenceSettingChanged();
+    });
+    connect(optionsMenu, &QMenu::aboutToShow, this, [presenceAction]() {
+        QSignalBlocker blocker(presenceAction);
+        presenceAction->setChecked(APPLICATION->settings()->get("ModrinthPresenceEnabled").toBool());
+    });
+    optionsMenu->addSeparator();
+    optionsMenu->addAction(tr("Sign out"), this, &FriendsPanel::signOutClicked);
+    m_menuButton->setMenu(optionsMenu);
 
     m_tree = new QTreeWidget(body);
     m_tree->setHeaderHidden(true);
@@ -101,8 +159,8 @@ FriendsPanel::FriendsPanel(QWidget* parent) : QDockWidget(tr("Friends"), parent)
         ProgressDialog dialog(this);
         dialog.setSkipButton(true, tr("Cancel"));
         dialog.execWithTask(&task);
-        ModrinthFriends::get()->ensureConnected();
-        ModrinthFriends::get()->refresh();
+        // storeSession() notifies ModrinthFriends, which refreshes and
+        // reconnects on its own; just repaint.
         rebuild();
     });
     connect(m_refreshButton, &QToolButton::clicked, this, [this]() {
@@ -167,7 +225,12 @@ bool FriendsPanel::event(QEvent* event)
 
 void FriendsPanel::reloadInvites()
 {
-    ModrinthShared::fetchPendingInvites(this, [this](const QList<ModrinthShared::PendingInvite>& invites) {
+    ModrinthShared::fetchPendingInvites(this, [this](bool ok, const QList<ModrinthShared::PendingInvite>& invites) {
+        if (!ok) {
+            // Network blip: keep the invites we already know about instead of
+            // making the section vanish as if they were gone.
+            return;
+        }
         m_invites.clear();
         for (const auto& invite : invites)
             m_invites.append({ invite.instanceId, invite.instanceName });
@@ -175,23 +238,71 @@ void FriendsPanel::reloadInvites()
     });
 }
 
+void FriendsPanel::updateViewAction(int attentionCount)
+{
+    if (attentionCount == m_lastAttentionCount)
+        return;
+    m_lastAttentionCount = attentionCount;
+    const QIcon base = QIcon::fromTheme("accounts");
+    if (attentionCount > 0) {
+        m_viewAction->setIcon(badgedIcon(base, attentionCount));
+        m_viewAction->setText(tr("Friends (%1)").arg(attentionCount));
+    } else {
+        m_viewAction->setIcon(base);
+        m_viewAction->setText(tr("Friends"));
+    }
+}
+
+void FriendsPanel::signOutClicked()
+{
+    if (!ModrinthShared::isSignedIn())
+        return;
+    if (QMessageBox::question(this, tr("Sign out"),
+                              tr("Sign out of Modrinth? Shared packs stop syncing and your friends list goes away "
+                                 "until you sign in again.")) != QMessageBox::Yes)
+        return;
+    ModrinthShared::clearSession();  // ModrinthFriends resets itself off this
+}
+
 void FriendsPanel::rebuild()
 {
+    auto* service = ModrinthFriends::get();
     const bool signedIn = ModrinthShared::isSignedIn();
     m_signInButton->setVisible(!signedIn);
     m_refreshButton->setVisible(signedIn);
+    m_menuButton->setVisible(signedIn);
     m_addEdit->setEnabled(signedIn);
     m_addButton->setEnabled(signedIn);
 
     const int scrollPos = m_tree->verticalScrollBar() ? m_tree->verticalScrollBar()->value() : 0;
     m_tree->clear();
     if (!signedIn) {
-        m_headerLabel->setText(tr("Sign in to see your Modrinth friends."));
+        m_headerLabel->setText(service->authFailed() ? tr("Your Modrinth session expired - sign in again.")
+                                                     : tr("Sign in to see your Modrinth friends."));
+        updateViewAction(0);
         return;
     }
 
-    const auto friends = ModrinthFriends::get()->friends();
+    auto friends = service->friends();
     int onlineCount = 0;
+    int incomingCount = 0;
+
+    // Stable, meaningful order: online friends cluster by what they play (so a
+    // pack several friends share reads as one group), everyone else is alpha.
+    std::sort(friends.begin(), friends.end(), [](const ModrinthFriends::Friend& a, const ModrinthFriends::Friend& b) {
+        if (a.online != b.online)
+            return a.online;
+        if (a.online) {
+            const bool aPlays = !a.playing.isEmpty();
+            const bool bPlays = !b.playing.isEmpty();
+            if (aPlays != bPlays)
+                return aPlays;
+            const int byPack = QString::compare(a.playing, b.playing, Qt::CaseInsensitive);
+            if (byPack != 0)
+                return byPack < 0;
+        }
+        return QString::compare(a.username, b.username, Qt::CaseInsensitive) < 0;
+    });
 
     // The presence socket only carries pack names; build the lookup tables
     // once instead of scanning every instance per online friend.
@@ -239,6 +350,7 @@ void FriendsPanel::rebuild()
                 if (!requests)
                     requests = makeSection(tr("Friend requests"));
                 parent = requests;
+                incomingCount++;
                 label = tr("%1 (double-click to accept)").arg(f.username);
             } else {
                 if (!sent)
@@ -274,8 +386,11 @@ void FriendsPanel::rebuild()
                 }
             }
         } else {
-            if (!offline)
-                offline = makeSection(tr("Offline"));
+            if (!offline) {
+                // With the presence socket down we cannot tell who is online,
+                // so do not claim everyone is offline.
+                offline = makeSection(service->socketConnected() ? tr("Offline") : tr("Friends"));
+            }
             parent = offline;
         }
         auto* item = new QTreeWidgetItem(parent, { label });
@@ -322,7 +437,15 @@ void FriendsPanel::rebuild()
     if (m_tree->verticalScrollBar())
         m_tree->verticalScrollBar()->setValue(scrollPos);
 
-    m_headerLabel->setText(tr("<b>%1</b> - %2 online").arg(ModrinthShared::username().toHtmlEscaped()).arg(onlineCount));
+    if (!service->lastError().isEmpty())
+        m_headerLabel->setText(service->lastError().toHtmlEscaped());
+    else if (!service->socketConnected())
+        m_headerLabel->setText(tr("<b>%1</b> - reconnecting…").arg(ModrinthShared::username().toHtmlEscaped()));
+    else
+        m_headerLabel->setText(
+            tr("<b>%1</b> - %2 online").arg(ModrinthShared::username().toHtmlEscaped()).arg(onlineCount));
+
+    updateViewAction(m_invites.size() + incomingCount);
 }
 
 void FriendsPanel::addFriendClicked()
@@ -343,11 +466,13 @@ void FriendsPanel::addFriendClicked()
 
 void FriendsPanel::acceptRequest(const QString& userId, const QString& username)
 {
-    ModrinthFriends::get()->addFriend(this, userId, [this, username](const QString& error) {
-        if (!error.isEmpty())
-            QMessageBox::warning(this, tr("Accept request"), error);
-    });
-    Q_UNUSED(username);
+    ModrinthFriends::get()->addFriend(
+        this, userId,
+        [this](const QString& error) {
+            if (!error.isEmpty())
+                QMessageBox::warning(this, tr("Accept request"), error);
+        },
+        username);
 }
 
 void FriendsPanel::itemDoubleClicked(QTreeWidgetItem* item, int)
@@ -432,8 +557,11 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
         QMenu inviteMenu(this);
         inviteMenu.addAction(tr("Join"), this, [this, inviteId, inviteName]() { joinInvite(inviteId, inviteName); });
         inviteMenu.addAction(tr("Decline"), this, [this, inviteId]() {
-            ModrinthShared::declinePendingInvite(this, inviteId,
-                                                 [this](const ModrinthShared::Response&) { reloadInvites(); });
+            ModrinthShared::declinePendingInvite(this, inviteId, [this](const ModrinthShared::Response& res) {
+                if (!res.ok)
+                    QMessageBox::warning(this, tr("Decline invite"), res.error);
+                reloadInvites();
+            });
         });
         inviteMenu.exec(m_tree->viewport()->mapToGlobal(pos));
         return;
@@ -468,6 +596,38 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
                            [this, friendInviteId, friendInviteName]() { joinInvite(friendInviteId, friendInviteName); });
             menu.addSeparator();
         }
+        // Invite this friend straight into a pack you own - the same call the
+        // Sharing page's invite dialog makes, minus the detour.
+        QMenu* inviteToMenu = nullptr;
+        auto* instances = APPLICATION->instances();
+        for (int i = 0; i < instances->count(); i++) {
+            auto* inst = instances->at(i);
+            auto att = ModrinthShared::Attachment::load(inst->instanceRoot());
+            if (!att || !att->isOwner())
+                continue;
+            if (!inviteToMenu)
+                inviteToMenu = menu.addMenu(tr("Invite to"));
+            const QString sharedId = att->id;
+            const QString packName = inst->name();
+            inviteToMenu->addAction(packName, this, [this, sharedId, userId, username, packName]() {
+                ModrinthShared::addMembers(this, sharedId, { userId },
+                                           [this, username, packName](const ModrinthShared::Response& res) {
+                                               if (!res.ok) {
+                                                   QMessageBox::warning(
+                                                       this, tr("Invite"),
+                                                       tr("Could not invite %1: %2").arg(username, res.error));
+                                                   return;
+                                               }
+                                               QMessageBox::information(
+                                                   this, tr("Invite sent"),
+                                                   tr("%1 was invited to \"%2\" - they'll get a Modrinth "
+                                                      "notification and can accept it from their launcher.")
+                                                       .arg(username, packName));
+                                           });
+            });
+        }
+        if (inviteToMenu)
+            menu.addSeparator();
         menu.addAction(tr("Remove friend"), this, [this, userId, username]() {
             if (QMessageBox::question(this, tr("Remove friend"), tr("Remove %1 from your friends?").arg(username)) ==
                 QMessageBox::Yes)

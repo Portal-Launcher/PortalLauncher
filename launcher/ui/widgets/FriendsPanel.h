@@ -45,6 +45,9 @@ class FriendsPanel : public QDockWidget {
     void acceptRequest(const QString& userId, const QString& username);
     void joinInvite(const QString& instanceId, const QString& instanceName);
     void launchLocalInstance(const QString& instanceId);
+    /** Badge the toolbar action with pending invites + incoming requests. */
+    void updateViewAction(int attentionCount);
+    void signOutClicked();
 
     struct Invite {
         QString instanceId;
@@ -55,9 +58,11 @@ class FriendsPanel : public QDockWidget {
     QAction* m_viewAction;
     QLabel* m_headerLabel;
     QToolButton* m_refreshButton;
+    QToolButton* m_menuButton;
     QPushButton* m_signInButton;
     QTreeWidget* m_tree;
     QLineEdit* m_addEdit;
     QPushButton* m_addButton;
     QTimer m_rebuildTimer;  // coalesces bursts of presence updates into one rebuild
+    int m_lastAttentionCount = -1;
 };

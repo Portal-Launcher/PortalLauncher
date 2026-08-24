@@ -51,9 +51,12 @@ ModrinthInviteFriendDialog::ModrinthInviteFriendDialog(QWidget* parent,
     connect(m_inviteButton, &QPushButton::clicked, this, &ModrinthInviteFriendDialog::inviteSelected);
     connect(m_copyLinkButton, &QPushButton::clicked, this, &ModrinthInviteFriendDialog::copyLinkInstead);
     connect(m_friendsList, &QListWidget::itemDoubleClicked, this, &ModrinthInviteFriendDialog::inviteSelected);
+    m_rebuildTimer.setSingleShot(true);
+    m_rebuildTimer.setInterval(150);
+    connect(&m_rebuildTimer, &QTimer::timeout, this, &ModrinthInviteFriendDialog::rebuildList);
     connect(ModrinthFriends::get(), &ModrinthFriends::changed, this, [this]() {
         m_friendsLoaded = true;
-        rebuildList();
+        m_rebuildTimer.start();
     });
 
     // Reuse the friends data the Friends panel already maintains.
@@ -140,14 +143,18 @@ void ModrinthInviteFriendDialog::inviteSelected()
                                [this, userId, username](const ModrinthShared::Response& res) {
                                    m_inviteButton->setEnabled(true);
                                    if (!res.ok) {
-                                       m_statusLabel->setText(tr("Could not invite %1: %2").arg(username, res.error));
+                                       // Escaped: the label renders rich text and the error can
+                                       // carry raw server bytes.
+                                       m_statusLabel->setText(tr("Could not invite %1: %2")
+                                                                  .arg(username.toHtmlEscaped(),
+                                                                       res.error.toHtmlEscaped()));
                                        return;
                                    }
                                    m_invitedIds.insert(userId);
                                    m_statusLabel->setText(
                                        tr("<b>Invite sent to %1</b> - they'll get a Modrinth notification and can "
                                           "accept it in this launcher or the Modrinth App.")
-                                           .arg(username));
+                                           .arg(username.toHtmlEscaped()));
                                    emit inviteSent();
                                    rebuildList();
                                });
@@ -160,7 +167,8 @@ void ModrinthInviteFriendDialog::copyLinkInstead()
                                  [this](const ModrinthShared::Response& res) {
                                      m_copyLinkButton->setEnabled(true);
                                      if (!res.ok) {
-                                         m_statusLabel->setText(tr("Could not create an invite link: %1").arg(res.error));
+                                         m_statusLabel->setText(
+                                             tr("Could not create an invite link: %1").arg(res.error.toHtmlEscaped()));
                                          return;
                                      }
                                      const QString link =

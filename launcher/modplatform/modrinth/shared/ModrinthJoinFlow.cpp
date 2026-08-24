@@ -64,7 +64,21 @@ void runJoinFlow(QWidget* parent,
             ModrinthSharedSyncTask syncTask(created, /*softFail*/ false);
             ProgressDialog syncDialog(guard.data());
             syncDialog.setSkipButton(true, QObject::tr("Abort"));
-            syncDialog.execWithTask(&syncTask);
+            if (syncDialog.execWithTask(&syncTask) != QDialog::Accepted) {
+                // The instance exists but its first download did not finish;
+                // pretending everything worked would hand the user an empty
+                // pack with a congratulation. Plain text: the pack name and
+                // error are remote-controlled.
+                QMessageBox failBox(
+                    QMessageBox::Warning, QObject::tr("Joined, but not downloaded yet"),
+                    QObject::tr("\"%1\" was added to your instance list, but downloading its content did not "
+                                "finish:\n\n%2\n\nPress Play on it to retry the download.")
+                        .arg(instanceName, syncTask.failReason().isEmpty() ? QObject::tr("The download was canceled.")
+                                                                          : syncTask.failReason()),
+                    QMessageBox::Ok, guard.data());
+                failBox.setTextFormat(Qt::PlainText);
+                failBox.exec();
+            }
         }
         done(true, QString());
     });
@@ -139,15 +153,15 @@ void joinFromInviteRef(QWidget* parent, const QString& inviteRef, std::function<
     });
 }
 
-void fetchPendingInvites(QObject* ctx, std::function<void(const QList<PendingInvite>&)> done)
+void fetchPendingInvites(QObject* ctx, std::function<void(bool ok, const QList<PendingInvite>&)> done)
 {
     if (!isSignedIn()) {
-        done({});
+        done(true, {});
         return;
     }
     getNotifications(ctx, [done](const Response& res) {
         if (!res.ok || !res.json.isArray()) {
-            done({});
+            done(false, {});
             return;
         }
         QSet<QString> joined;
@@ -174,7 +188,7 @@ void fetchPendingInvites(QObject* ctx, std::function<void(const QList<PendingInv
             seen.insert(invite.instanceId);
             invites.append(invite);
         }
-        done(invites);
+        done(true, invites);
     });
 }
 

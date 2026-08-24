@@ -38,7 +38,9 @@ struct PendingInvite {
     QString instanceName;
 };
 
-/** Pending shared-pack invites for this account, minus packs already joined. */
-void fetchPendingInvites(QObject* ctx, std::function<void(const QList<PendingInvite>&)> done);
+/** Pending shared-pack invites for this account, minus packs already joined.
+ *  ok=false means the list could not be fetched (network trouble), so callers
+ *  should keep whatever they already have instead of showing "no invites". */
+void fetchPendingInvites(QObject* ctx, std::function<void(bool ok, const QList<PendingInvite>&)> done);
 
 }  // namespace ModrinthShared

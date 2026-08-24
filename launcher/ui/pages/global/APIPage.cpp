@@ -49,6 +49,7 @@
 
 #include "Application.h"
 #include "BuildConfig.h"
+#include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "net/PasteUpload.h"
 #include "settings/SettingsObject.h"
 #include "tools/BaseProfiler.h"
@@ -204,7 +205,26 @@ void APIPage::applySettings()
     QString flameKey = ui->flameKey->text();
     s->set("FlameKeyOverride", flameKey);
     QString modrinthToken = ui->modrinthToken->text();
-    s->set("ModrinthToken", modrinthToken);
+    if (modrinthToken != s->get("ModrinthToken").toString()) {
+        // The token IS the signed-in identity for friends and shared packs;
+        // editing it here must not leave the previous account's id behind.
+        if (modrinthToken.isEmpty()) {
+            ModrinthShared::clearSession();
+        } else {
+            s->set("ModrinthToken", modrinthToken);
+            s->set("ModrinthShareUserId", QString());
+            s->set("ModrinthShareUsername", QString());
+            s->set("ModrinthShareTokenIsSession", QString());
+            s->set("ModrinthShareRefreshAfter", QString());
+            ModrinthShared::validateToken(APPLICATION, modrinthToken, [](const ModrinthShared::Response& res) {
+                if (res.ok && res.json.isObject()) {
+                    const auto user = res.json.object();
+                    ModrinthShared::storeSession(ModrinthShared::token(), user.value("id").toString(),
+                                                 user.value("username").toString(), /*isSession*/ false);
+                }
+            });
+        }
+    }
     s->set("UserAgentOverride", ui->userAgentLineEdit->text());
     s->set("TechnicClientID", ui->technicClientID->text());
 }

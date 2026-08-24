@@ -386,11 +386,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_menuSearchBar->setVisible(false);
 
         proxymodel->setFilterCaseSensitivity(Qt::CaseInsensitive);
-        auto applySearch = [this](const QString& text) {
-            proxymodel->setFilterFixedString(text);
+        // Filtering re-sorts and relayouts the whole grid, which is heavy with
+        // many instances; debounce so fast typing costs one pass, not one per
+        // keystroke. The twin bars still mirror each other instantly.
+        auto* searchDebounce = new QTimer(this);
+        searchDebounce->setSingleShot(true);
+        searchDebounce->setInterval(150);
+        connect(searchDebounce, &QTimer::timeout, this,
+                [this]() { proxymodel->setFilterFixedString(m_searchBar->text()); });
+        auto applySearch = [this, searchDebounce](const QString& text) {
             for (auto* other : { m_searchBar, m_menuSearchBar })
                 if (other->text() != text)
                     other->setText(text);
+            searchDebounce->start();
         };
         connect(m_searchBar, &QLineEdit::textChanged, this, applySearch);
         connect(m_menuSearchBar, &QLineEdit::textChanged, this, applySearch);
@@ -529,13 +537,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         addDockWidget(Qt::RightDockWidgetArea, m_friendsPanel);
         m_friendsPanel->hide();  // restored by MainWindowState if it was open
         auto* friendsAction = m_friendsPanel->viewAction();
-        friendsAction->setIcon(QIcon::fromTheme("accounts"));
-        friendsAction->setText(tr("Friends"));
-        friendsAction->setToolTip(tr("Show your Modrinth friends, who is online, and what they are playing."));
         ui->mainToolBar->addAction(friendsAction);
         // Keep the panel reachable when the main toolbar is hidden
         // (menu-bar-instead-of-toolbar mode).
         ui->viewMenu->addAction(friendsAction);
+        // A closed panel should not mean missing everything: surface friend
+        // and invite activity in the status bar (the panel badge shows counts).
+        connect(ModrinthFriends::get(), &ModrinthFriends::friendOnline, this, [this](const QString& username) {
+            statusBar()->showMessage(tr("%1 is online").arg(username), 5000);
+        });
+        connect(ModrinthFriends::get(), &ModrinthFriends::inviteNotification, this, [this]() {
+            statusBar()->showMessage(tr("You received a modpack invite - open Friends to join it."), 8000);
+        });
         if (ModrinthShared::isSignedIn()) {
             ModrinthFriends::get()->ensureConnected();
             ModrinthFriends::get()->refresh();
@@ -1862,6 +1875,16 @@ void MainWindow::on_actionDeleteInstance_triggered()
     if (!checkLinkedInstances(id, this, tr("Deleting")))
         return;
 
+    auto finishDelete = [this, id]() {
+        if (APPLICATION->instances()->trashInstance(id)) {
+            ui->actionUndoTrashInstance->setEnabled(APPLICATION->instances()->trashedSomething());
+        } else {
+            APPLICATION->instances()->deleteInstance(id);
+        }
+        APPLICATION->settings()->set("SelectedInstance", QString());
+        selectionBad();
+    };
+
     // Shared instances: deleting the local copy should not leave a ghost
     // membership behind on the service.
     if (ModrinthShared::isSignedIn()) {
@@ -1877,19 +1900,45 @@ void MainWindow::on_actionDeleteInstance_triggered()
                        "If you choose No, friends keep the last pushed version, but nobody will be able to push "
                        "updates to it anymore.")
                         .arg(m_selectedInstance->name()));
-                if (stopSharing == QMessageBox::Yes)
-                    ModrinthShared::deleteRemoteInstance(APPLICATION, attachment->id, [](const ModrinthShared::Response&) {});
+                if (stopSharing == QMessageBox::Yes) {
+                    // Wait for Modrinth's answer before trashing: the attachment
+                    // file going into the trash with the instance is the only
+                    // record of the share id, so a silently failed delete would
+                    // orphan the pack on the service forever.
+                    const QString name = m_selectedInstance->name();
+                    ModrinthShared::deleteRemoteInstance(
+                        this, attachment->id, [this, finishDelete, name](const ModrinthShared::Response& res) {
+                            // Already gone or not ours anymore: nothing left to protect.
+                            const bool gone = res.status == 401 || res.status == 403 || res.status == 404;
+                            if (res.ok || gone) {
+                                finishDelete();
+                                return;
+                            }
+                            QMessageBox box(this);
+                            box.setIcon(QMessageBox::Warning);
+                            box.setWindowTitle(tr("Could not stop sharing"));
+                            box.setText(
+                                tr("The shared pack behind \"%1\" could not be deleted on Modrinth right now.").arg(name));
+                            box.setTextFormat(Qt::PlainText);
+                            box.setInformativeText(
+                                tr("If you delete the instance anyway, the shared pack stays up on Modrinth and this "
+                                   "launcher loses its record of it - you would have to delete it from the Modrinth "
+                                   "app. You can also cancel and try again later."));
+                            box.setDetailedText(res.error);
+                            auto* deleteAnywayButton = box.addButton(tr("Delete anyway"), QMessageBox::DestructiveRole);
+                            box.addButton(QMessageBox::Cancel);
+                            box.setDefaultButton(QMessageBox::Cancel);
+                            box.exec();
+                            if (box.clickedButton() == deleteAnywayButton)
+                                finishDelete();
+                        });
+                    return;  // continues from the callback above
+                }
             }
         }
     }
 
-    if (APPLICATION->instances()->trashInstance(id)) {
-        ui->actionUndoTrashInstance->setEnabled(APPLICATION->instances()->trashedSomething());
-    } else {
-        APPLICATION->instances()->deleteInstance(id);
-    }
-    APPLICATION->settings()->set("SelectedInstance", QString());
-    selectionBad();
+    finishDelete();
 }
 
 void MainWindow::on_actionExportInstanceZip_triggered()

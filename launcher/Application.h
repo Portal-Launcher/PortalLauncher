@@ -238,7 +238,9 @@ class Application : public QApplication {
 
    private:
     void addRunningInstance();
-    void subRunningInstance();
+    /** stoppedId: instance that just stopped, excluded when re-deriving what
+     *  presence should now say is playing. */
+    void subRunningInstance(const QString& stoppedId = QString());
     bool shouldExitNow() const;
 
    private:
