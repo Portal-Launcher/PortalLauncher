@@ -83,12 +83,18 @@ class ModFolderPage : public ExternalResourcesPage {
     void rebuildGroupFilter();
     void assignSelectedToGroup(const QString& group);
 
+    void rebuildLoadoutMenu();
+    void saveLoadout();
+    void applyLoadout(const QString& name);
+
    protected:
     ModFolderModel* m_model;
     QPointer<ResourceDownload::ModDownloadDialog> m_downloadDialog;
     QAction* m_groupAction = nullptr;
     QMenu* m_groupMenu = nullptr;
     QComboBox* m_groupFilter = nullptr;
+    QAction* m_loadoutAction = nullptr;
+    QMenu* m_loadoutMenu = nullptr;
 };
 
 class CoreModFolderPage : public ModFolderPage {

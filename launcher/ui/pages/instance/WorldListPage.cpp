@@ -53,8 +53,15 @@
 #include <QTreeView>
 #include <Qt>
 
+#include <QFileInfo>
+#include <QFutureWatcher>
+#include <QtConcurrent>
+
 #include "FileSystem.h"
+#include "minecraft/WorldBackup.h"
+#include "tasks/Task.h"
 #include "tools/MCEditTool.h"
+#include "ui/dialogs/ProgressDialog.h"
 
 #include "DesktopServices.h"
 #include "ui/GuiUtil.h"
@@ -108,6 +115,28 @@ WorldListPage::WorldListPage(MinecraftInstance* inst, WorldList* worlds, QWidget
     head->setSectionResizeMode(0, QHeaderView::Stretch);
     head->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     head->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+
+    // World backups: zip and restore from the toolbar, plus an opt-in
+    // automatic backup of changed worlds on every launch.
+    {
+        m_backupNowAction = new QAction(QIcon::fromTheme("export"), tr("Back Up"), this);
+        m_backupNowAction->setToolTip(tr("Zip the selected world into this instance's backups folder."));
+        connect(m_backupNowAction, &QAction::triggered, this, &WorldListPage::backupSelectedWorld);
+        m_restoreBackupAction = new QAction(QIcon::fromTheme("import"), tr("Restore…"), this);
+        m_restoreBackupAction->setToolTip(tr("Put the selected world back the way a backup remembers it."));
+        connect(m_restoreBackupAction, &QAction::triggered, this, &WorldListPage::restoreWorldBackup);
+        m_backupOnLaunchAction = new QAction(tr("Back Up on Launch"), this);
+        m_backupOnLaunchAction->setCheckable(true);
+        m_backupOnLaunchAction->setChecked(m_inst->settings()->get("BackupWorldsOnLaunch").toBool());
+        m_backupOnLaunchAction->setToolTip(
+            tr("Before every launch, zip each world that changed since its last backup (the %1 newest are kept).")
+                .arg(m_inst->settings()->get("WorldBackupKeep").toInt()));
+        connect(m_backupOnLaunchAction, &QAction::toggled, this,
+                [this](bool checked) { m_inst->settings()->set("BackupWorldsOnLaunch", checked); });
+        ui->toolBar->insertActionBefore(ui->actionRefresh, m_backupNowAction);
+        ui->toolBar->insertActionBefore(ui->actionRefresh, m_restoreBackupAction);
+        ui->toolBar->insertActionBefore(ui->actionRefresh, m_backupOnLaunchAction);
+    }
 
     connect(ui->worldTreeView->selectionModel(), &QItemSelectionModel::currentChanged, this, &WorldListPage::worldChanged);
     worldChanged(QModelIndex(), QModelIndex());
@@ -378,6 +407,12 @@ void WorldListPage::worldChanged([[maybe_unused]] const QModelIndex& current, [[
     ui->actionCopy->setEnabled(enable);
     ui->actionRename->setEnabled(enable);
     ui->actionData_Packs->setEnabled(enable);
+    if (m_backupNowAction) {
+        m_backupNowAction->setEnabled(enable);
+        const QString folder = QFileInfo(index.data(WorldList::FolderRole).toString()).fileName();
+        m_restoreBackupAction->setEnabled(enable &&
+                                          !WorldBackup::listBackups(m_inst->instanceRoot(), folder).isEmpty());
+    }
     bool hasIcon = !index.data(WorldList::IconFileRole).isNull();
     ui->actionReset_Icon->setEnabled(enable && hasIcon);
 
@@ -475,6 +510,103 @@ void WorldListPage::on_actionJoin_triggered()
     auto worldVariant = m_worlds->data(index, WorldList::ObjectRole);
     auto world = (World*)worldVariant.value<void*>();
     APPLICATION->launch(m_inst, LaunchMode::Normal, std::make_shared<MinecraftTarget>(MinecraftTarget::parse(world->folderName(), true)));
+}
+
+namespace {
+/** Runs one world backup or restore on the thread pool behind a progress
+ *  dialog; worlds are routinely gigabytes, so never on the GUI thread. */
+class WorldBackupTask : public Task {
+   public:
+    using Runner = std::function<bool(QString* error)>;
+    WorldBackupTask(const QString& status, Runner runner) : m_status(status), m_runner(std::move(runner)) {}
+
+   protected:
+    void executeTask() override
+    {
+        setStatus(m_status);
+        connect(&m_watcher, &QFutureWatcher<QString>::finished, this, [this]() {
+            const QString error = m_watcher.result();
+            if (error.isEmpty())
+                emitSucceeded();
+            else
+                emitFailed(error);
+        });
+        m_watcher.setFuture(QtConcurrent::run([runner = m_runner]() -> QString {
+            QString error;
+            if (!runner(&error))
+                return error.isEmpty() ? QObject::tr("Unknown error") : error;
+            return {};
+        }));
+    }
+
+   private:
+    QString m_status;
+    Runner m_runner;
+    QFutureWatcher<QString> m_watcher;
+};
+}  // namespace
+
+void WorldListPage::backupSelectedWorld()
+{
+    QModelIndex index = getSelectedWorld();
+    if (!index.isValid())
+        return;
+    const QString worldDir = m_worlds->data(index, WorldList::FolderRole).toString();
+    const QString worldName = m_worlds->data(index, WorldList::NameRole).toString();
+    const QString instanceRoot = m_inst->instanceRoot();
+    const int keep = m_inst->settings()->get("WorldBackupKeep").toInt();
+
+    WorldBackupTask task(tr("Backing up \"%1\"…").arg(worldName), [instanceRoot, worldDir, keep](QString* error) {
+        return WorldBackup::backupOneWorld(instanceRoot, worldDir, keep, error);
+    });
+    ProgressDialog dialog(this);
+    if (dialog.execWithTask(&task) == QDialog::Accepted)
+        worldChanged(QModelIndex(), QModelIndex());  // light up Restore
+    else if (!task.failReason().isEmpty())
+        QMessageBox::warning(this, tr("Back up world"), task.failReason());
+}
+
+void WorldListPage::restoreWorldBackup()
+{
+    QModelIndex index = getSelectedWorld();
+    if (!index.isValid())
+        return;
+    const QString worldDir = m_worlds->data(index, WorldList::FolderRole).toString();
+    const QString folderName = QFileInfo(worldDir).fileName();
+    const QString worldName = m_worlds->data(index, WorldList::NameRole).toString();
+    const QString instanceRoot = m_inst->instanceRoot();
+
+    const auto backups = WorldBackup::listBackups(instanceRoot, folderName);
+    if (backups.isEmpty())
+        return;
+    QStringList choices;
+    for (const auto& info : backups) {
+        const double mb = static_cast<double>(info.size()) / (1024.0 * 1024.0);
+        choices.append(tr("%1  (%2 MB)")
+                           .arg(info.lastModified().toString("yyyy-MM-dd HH:mm"))
+                           .arg(QString::number(mb, 'f', 1)));
+    }
+    bool ok = false;
+    const QString picked = QInputDialog::getItem(this, tr("Restore \"%1\"").arg(worldName),
+                                                 tr("Choose the backup to restore. The world as it is right now gets "
+                                                    "backed up first, so this can be undone."),
+                                                 choices, 0, false, &ok);
+    if (!ok)
+        return;
+    const QString zipPath = backups[choices.indexOf(picked)].absoluteFilePath();
+    const QString worldsDir = m_worlds->dir().absolutePath();
+
+    m_worlds->stopWatching();
+    WorldBackupTask task(tr("Restoring \"%1\"…").arg(worldName),
+                         [instanceRoot, worldsDir, folderName, zipPath](QString* error) {
+                             return WorldBackup::restoreBackup(instanceRoot, worldsDir, folderName, zipPath, error);
+                         });
+    ProgressDialog dialog(this);
+    const int result = dialog.execWithTask(&task);
+    m_worlds->startWatching();
+    m_worlds->update();
+    if (result != QDialog::Accepted && !task.failReason().isEmpty())
+        QMessageBox::warning(this, tr("Restore world"), task.failReason());
 }
 
 #include "WorldListPage.moc"

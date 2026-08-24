@@ -69,6 +69,8 @@
 #include "minecraft/PackProfile.h"
 #include "minecraft/VersionFilterData.h"
 #include "minecraft/mod/Mod.h"
+#include "minecraft/mod/ModGroups.h"
+#include "minecraft/mod/ModLoadouts.h"
 #include "minecraft/mod/ModFolderModel.h"
 #include "minecraft/mod/ModUpdateBackup.h"
 
@@ -149,6 +151,15 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     m_groupAction->setMenu(m_groupMenu);
     connect(m_groupMenu, &QMenu::aboutToShow, this, &ModFolderPage::rebuildGroupMenu);
     ui->actionsToolbar->insertActionAfter(ui->actionChangeVersion, m_groupAction);
+
+    // Loadouts: whole enabled/disabled sets as named presets ("everything",
+    // "performance only", "server testing") applied in one click.
+    m_loadoutAction = new QAction(QIcon::fromTheme("checkupdate"), tr("Loadouts"), this);
+    m_loadoutAction->setToolTip(tr("Save the current enabled set as a named loadout, or switch to a saved one."));
+    m_loadoutMenu = new QMenu(this);
+    m_loadoutAction->setMenu(m_loadoutMenu);
+    connect(m_loadoutMenu, &QMenu::aboutToShow, this, &ModFolderPage::rebuildLoadoutMenu);
+    ui->actionsToolbar->insertActionAfter(m_groupAction, m_loadoutAction);
     connect(ui->treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             [this] { m_groupAction->setEnabled(ui->treeView->selectionModel()->hasSelection()); });
     m_groupAction->setEnabled(false);
@@ -266,6 +277,88 @@ void ModFolderPage::assignSelectedToGroup(const QString& group)
     for (auto* mod : mods)
         m_model->groups().assign(*mod, group);
     m_model->groupsEdited();
+}
+
+void ModFolderPage::rebuildLoadoutMenu()
+{
+    m_loadoutMenu->clear();
+    ModLoadouts loadouts(m_instance->instanceRoot());
+    loadouts.load();
+    const QStringList names = loadouts.loadoutNames();
+
+    for (const auto& name : names) {
+        auto* act = m_loadoutMenu->addAction(name);
+        connect(act, &QAction::triggered, this, [this, name] { applyLoadout(name); });
+    }
+    if (!names.isEmpty())
+        m_loadoutMenu->addSeparator();
+
+    auto* save = m_loadoutMenu->addAction(tr("Save Current as Loadout…"));
+    connect(save, &QAction::triggered, this, &ModFolderPage::saveLoadout);
+
+    if (names.isEmpty())
+        return;
+    auto* remove = m_loadoutMenu->addMenu(tr("Delete Loadout"));
+    for (const auto& name : names) {
+        connect(remove->addAction(name), &QAction::triggered, this, [this, name] {
+            ModLoadouts loadouts(m_instance->instanceRoot());
+            loadouts.load();
+            loadouts.remove(name);
+            loadouts.save();
+        });
+    }
+}
+
+void ModFolderPage::saveLoadout()
+{
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Save Loadout"), tr("Loadout name (an existing name is overwritten):"),
+                              QLineEdit::Normal, QString(), &ok)
+            .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+    QList<QStringList> enabledKeys;
+    QList<QStringList> allKeys;
+    for (int i = 0; i < static_cast<int>(m_model->size()); i++) {
+        auto& mod = static_cast<Mod&>(m_model->at(i));
+        const auto keys = ModGroups::keysFor(mod);
+        allKeys.append(keys);
+        if (mod.enabled())
+            enabledKeys.append(keys);
+    }
+    ModLoadouts loadouts(m_instance->instanceRoot());
+    loadouts.load();
+    loadouts.capture(name, enabledKeys, allKeys);
+    if (!loadouts.save())
+        QMessageBox::warning(this, tr("Save Loadout"),
+                             tr("Could not write mod-loadouts.json in the instance folder."));
+}
+
+void ModFolderPage::applyLoadout(const QString& name)
+{
+    ModLoadouts loadouts(m_instance->instanceRoot());
+    loadouts.load();
+    if (!loadouts.has(name))
+        return;
+    QModelIndexList toEnable;
+    QModelIndexList toDisable;
+    for (int i = 0; i < static_cast<int>(m_model->size()); i++) {
+        auto& mod = static_cast<Mod&>(m_model->at(i));
+        const auto keys = ModGroups::keysFor(mod);
+        // Mods added after the loadout was saved stay as they are: new
+        // content should never silently vanish by switching presets.
+        if (!loadouts.knowsMod(name, keys))
+            continue;
+        const bool want = loadouts.isEnabledIn(name, keys);
+        if (want == mod.enabled())
+            continue;
+        (want ? toEnable : toDisable).append(m_model->index(i, 0));
+    }
+    if (!toEnable.isEmpty())
+        m_model->setResourceEnabled(toEnable, EnableAction::ENABLE);
+    if (!toDisable.isEmpty())
+        m_model->setResourceEnabled(toDisable, EnableAction::DISABLE);
 }
 
 bool ModFolderPage::shouldDisplay() const

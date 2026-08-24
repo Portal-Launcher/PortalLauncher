@@ -84,6 +84,9 @@ class WorldListPage : public QMainWindow, public BasePage {
     WorldList* m_worlds;
     unique_qobject_ptr<LoggedProcess> m_mceditProcess;
     bool m_mceditStarting = false;
+    QAction* m_backupNowAction = nullptr;
+    QAction* m_restoreBackupAction = nullptr;
+    QAction* m_backupOnLaunchAction = nullptr;
 
     std::shared_ptr<Setting> m_wide_bar_setting = nullptr;
     std::unique_ptr<DataPackFolderModel> m_datapackModel;
@@ -102,6 +105,8 @@ class WorldListPage : public QMainWindow, public BasePage {
     void worldChanged(const QModelIndex& current, const QModelIndex& previous);
     void mceditState(LoggedProcess::State state);
     void on_actionJoin_triggered();
+    void backupSelectedWorld();
+    void restoreWorldBackup();
 
     void ShowContextMenu(const QPoint& pos);
 };

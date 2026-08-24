@@ -58,6 +58,7 @@
 #include "launch/steps/TextPrint.h"
 
 #include "minecraft/launch/AutoInstallJava.h"
+#include "minecraft/launch/BackupWorlds.h"
 #include "minecraft/launch/ClaimAccount.h"
 #include "minecraft/launch/CreateGameFolders.h"
 #include "minecraft/launch/EnsureAvailableMemory.h"
@@ -248,6 +249,10 @@ void MinecraftInstance::loadSpecificSettings()
     m_settings->registerSetting("JoinServerOnLaunch", false);
     m_settings->registerSetting("JoinServerOnLaunchAddress", "");
     m_settings->registerSetting("JoinWorldOnLaunch", "");
+
+    // World backups (toggled from the Worlds page)
+    m_settings->registerSetting("BackupWorldsOnLaunch", false);
+    m_settings->registerSetting("WorldBackupKeep", 3);
 
     // Use account for instance, this does not have a global override
     m_settings->registerSetting("UseAccountForInstance", false);
@@ -1149,6 +1154,11 @@ LaunchTask* MinecraftInstance::createLaunchTask(AuthSessionPtr session, Minecraf
     // create the .minecraft folder and server-resource-packs (workaround for Minecraft bug MCL-3732)
     {
         process->appendStep(makeShared<CreateGameFolders>(pptr));
+    }
+
+    // zip changed worlds before anything can touch them (opt-in per instance)
+    if (settings()->get("BackupWorldsOnLaunch").toBool()) {
+        process->appendStep(makeShared<BackupWorlds>(pptr));
     }
 
     if (!targetToJoin && settings()->get("JoinServerOnLaunch").toBool()) {

@@ -178,6 +178,8 @@ set(LAUNCH_SOURCES
     launch/TaskStepWrapper.h
     logs/LogParser.cpp
     logs/LogParser.h
+    logs/CrashAnalyzer.cpp
+    logs/CrashAnalyzer.h
 )
 
 # Old update system
@@ -260,6 +262,8 @@ set(MINECRAFT_SOURCES
     minecraft/update/LibrariesTask.cpp
     minecraft/update/LibrariesTask.h
 
+    minecraft/launch/BackupWorlds.cpp
+    minecraft/launch/BackupWorlds.h
     minecraft/launch/ClaimAccount.cpp
     minecraft/launch/ClaimAccount.h
     minecraft/launch/CreateGameFolders.cpp
@@ -321,8 +325,12 @@ set(MINECRAFT_SOURCES
     minecraft/VersionFile.h
     minecraft/VersionFilterData.h
     minecraft/VersionFilterData.cpp
+    minecraft/ServersDat.h
+    minecraft/ServersDat.cpp
     minecraft/World.h
     minecraft/World.cpp
+    minecraft/WorldBackup.h
+    minecraft/WorldBackup.cpp
     minecraft/WorldList.h
     minecraft/WorldList.cpp
 
@@ -334,6 +342,8 @@ set(MINECRAFT_SOURCES
     minecraft/mod/ModFolderModel.cpp
     minecraft/mod/ModGroups.h
     minecraft/mod/ModGroups.cpp
+    minecraft/mod/ModLoadouts.h
+    minecraft/mod/ModLoadouts.cpp
     minecraft/mod/ModUpdateBackup.h
     minecraft/mod/ModUpdateBackup.cpp
     minecraft/mod/Resource.h
@@ -1218,6 +1228,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/ProjectItem.cpp
     ui/widgets/ProjectDetailPanel.h
     ui/widgets/ProjectDetailPanel.cpp
+    ui/widgets/CrashHintBar.h
+    ui/widgets/CrashHintBar.cpp
     ui/widgets/SubTaskProgressBar.h
     ui/widgets/SubTaskProgressBar.cpp
     ui/widgets/VersionListView.cpp

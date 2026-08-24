@@ -94,6 +94,8 @@ class LogPage : public QWidget, public BasePage {
     void modelStateToUI();
     void UIToModelState();
     void setInstanceLaunchTaskChanged(LaunchTask* proc, bool initial);
+    /** Crash Doctor: diagnose the log after a crashed run and offer fixes. */
+    void runCrashDoctor(const QString& logText);
 
    private:
     Ui::LogPage* ui;
@@ -102,4 +104,6 @@ class LogPage : public QWidget, public BasePage {
 
     LogFormatProxyModel* m_proxy;
     shared_qobject_ptr<LogModel> m_model;
+    class CrashHintBar* m_crashBar = nullptr;
+    QString m_culpritFile;  // mod file matched to the current diagnosis
 };

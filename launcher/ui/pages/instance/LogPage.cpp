@@ -44,11 +44,20 @@
 #include <QScrollBar>
 #include <QShortcut>
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QVBoxLayout>
+
+#include "FileSystem.h"
 #include "launch/LaunchTask.h"
+#include "logs/CrashAnalyzer.h"
 #include "settings/Setting.h"
 
 #include "ui/GuiUtil.h"
 #include "ui/themes/ThemeManager.h"
+#include "ui/widgets/CrashHintBar.h"
 
 #include <BuildConfig.h>
 
@@ -147,6 +156,32 @@ LogPage::LogPage(BaseInstance* instance, QWidget* parent) : QWidget(parent), ui(
 
     ui->text->setModel(m_proxy);
 
+    // Crash Doctor banner, slotted directly above the log view.
+    {
+        m_crashBar = new CrashHintBar(this);
+        const int idx = ui->gridLayout->indexOf(ui->text);
+        int row = 0, col = 0, rowSpan = 1, colSpan = 1;
+        ui->gridLayout->getItemPosition(idx, &row, &col, &rowSpan, &colSpan);
+        auto* wrap = new QWidget(this);
+        auto* wrapLayout = new QVBoxLayout(wrap);
+        wrapLayout->setContentsMargins(0, 0, 0, 0);
+        ui->gridLayout->removeWidget(ui->text);
+        wrapLayout->addWidget(m_crashBar);
+        wrapLayout->addWidget(ui->text, 1);
+        ui->gridLayout->addWidget(wrap, row, col, rowSpan, colSpan);
+        connect(m_crashBar, &CrashHintBar::disableCulpritRequested, this, [this]() {
+            if (m_culpritFile.isEmpty())
+                return;
+            if (QFile::rename(m_culpritFile, m_culpritFile + ".disabled")) {
+                m_crashBar->clearFindings();
+            } else {
+                QMessageBox::warning(this, tr("Disable mod"),
+                                     tr("Could not disable %1 - the file may be in use.")
+                                         .arg(QFileInfo(m_culpritFile).fileName()));
+            }
+        });
+    }
+
     // set up instance and launch process recognition
     {
         auto launchTask = m_instance->getLaunchTask();
@@ -207,6 +242,8 @@ void LogPage::setInstanceLaunchTaskChanged(LaunchTask* proc, bool initial)
 {
     m_process = proc;
     if (m_process) {
+        if (m_crashBar)
+            m_crashBar->clearFindings();  // fresh run, fresh diagnosis
         m_model = proc->getLogModel();
         m_proxy->setSourceModel(m_model.get());
         if (initial) {
@@ -215,9 +252,51 @@ void LogPage::setInstanceLaunchTaskChanged(LaunchTask* proc, bool initial)
             UIToModelState();
         }
     } else {
+        // The model goes away with the process; diagnose before it does.
+        if (m_model && m_instance->hasCrashed())
+            runCrashDoctor(m_model->toPlainText());
         m_proxy->setSourceModel(nullptr);
         m_model.reset();
     }
+}
+
+void LogPage::runCrashDoctor(const QString& logText)
+{
+    const auto findings = CrashAnalyzer::analyze(logText);
+    if (findings.isEmpty()) {
+        m_crashBar->clearFindings();
+        return;
+    }
+
+    // Match the first finding's culprits against the installed mod files so
+    // the banner can offer a one-click disable. Names are compared with
+    // punctuation stripped ("sodium_extra" should find sodium-extra-1.0.jar).
+    auto normalized = [](const QString& text) {
+        QString out;
+        for (const QChar& c : text)
+            if (c.isLetterOrNumber())
+                out.append(c.toLower());
+        return out;
+    };
+    m_culpritFile.clear();
+    QString culpritName;
+    const QDir modsDir(FS::PathCombine(m_instance->gameRoot(), "mods"));
+    const auto modFiles = modsDir.entryInfoList({ "*.jar" }, QDir::Files);
+    for (const auto& token : findings.first().culprits) {
+        const QString needle = normalized(token);
+        if (needle.size() < 4)
+            continue;  // too short to match reliably
+        for (const auto& info : modFiles) {
+            if (normalized(info.fileName()).contains(needle)) {
+                m_culpritFile = info.absoluteFilePath();
+                culpritName = info.fileName();
+                break;
+            }
+        }
+        if (!m_culpritFile.isEmpty())
+            break;
+    }
+    m_crashBar->showFindings(findings, culpritName);
 }
 
 void LogPage::onInstanceLaunchTaskChanged(LaunchTask* proc)
