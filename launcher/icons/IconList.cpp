@@ -204,7 +204,10 @@ void IconList::directoryChanged(const QString& path)
         }
     }
 
-    sortIconList();
+    // Re-sorting reindexes and broadcasts a full iconUpdated({}); only pay for
+    // that when the directory's membership actually changed.
+    if (!toRemove.isEmpty() || !toAdd.isEmpty())
+        sortIconList();
 }
 
 void IconList::fileChanged(const QString& path)
@@ -213,7 +216,10 @@ void IconList::fileChanged(const QString& path)
     QFileInfo checkfile(path);
     if (!checkfile.exists())
         return;
-    QString key = m_dir.relativeFilePath(checkfile.absoluteFilePath());
+    // Icon keys are the file name WITHOUT its suffix (see directoryChanged);
+    // looking up the suffixed name always missed, so icons edited in place
+    // never refreshed in the UI.
+    QString key = QFileInfo(m_dir.relativeFilePath(checkfile.absoluteFilePath())).completeBaseName();
     int idx = getIconIndex(key);
     if (idx == -1)
         return;

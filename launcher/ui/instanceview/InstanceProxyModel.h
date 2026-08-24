@@ -31,4 +31,7 @@ class InstanceProxyModel : public QSortFilterProxyModel {
 
    private:
     QCollator m_naturalSort;
+    // Cached from settings: subSortLessThan runs per comparison during sorts,
+    // and a settings lookup per comparison is measurable on big lists.
+    QString m_sortMode;
 };

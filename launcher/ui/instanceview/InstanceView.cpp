@@ -179,6 +179,9 @@ void InstanceView::updateScrollbar()
 void InstanceView::updateGeometries()
 {
     m_geometryCache.clear();
+    // QCache defaults to a max cost of 100; past 100 instances that means an
+    // eviction (and a relayout of the evicted row) on every single pass.
+    m_geometryCache.setMaxCost(qMax(128, model()->rowCount() + 1));
 
     QMap<LocaleString, VisualGroup*> cats;
 
@@ -533,6 +536,11 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
         }
         Qt::ItemFlags flags = index.flags();
         option.rect = visualRect(index);
+        // Only lay out and paint what is actually on screen; the delegate's
+        // text layout is far too expensive to run for every scrolled-off row.
+        if (!option.rect.intersects(event->rect())) {
+            continue;
+        }
         option.features |= QStyleOptionViewItem::WrapText;
         if (flags & Qt::ItemIsSelectable && selectionModel()->isSelected(index)) {
             option.state |= selectionModel()->isSelected(index) ? QStyle::State_Selected : QStyle::State_None;
@@ -707,13 +715,20 @@ QRect InstanceView::geometryRect(const QModelIndex& index) const
 {
     const_cast<InstanceView*>(this)->executeDelayedItemsLayout();
 
-    if (!index.isValid() || isIndexHidden(index) || index.column() > 0) {
+    if (!index.isValid() || index.column() > 0) {
         return QRect();
     }
 
+    // Cache first: the hidden check re-resolves the row's group, which is
+    // wasted work for the overwhelmingly common cached case. Collapsing or
+    // expanding a group always goes through updateGeometries(), which clears
+    // this cache, so a hit can never be stale.
     int row = index.row();
     if (m_geometryCache.contains(row)) {
         return *m_geometryCache[row];
+    }
+    if (isIndexHidden(index)) {
+        return QRect();
     }
 
     const VisualGroup* cat = category(index);

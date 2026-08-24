@@ -20,6 +20,7 @@
 #include <icons/IconList.h>
 #include "Application.h"
 #include "InstanceView.h"
+#include "settings/Setting.h"
 
 #include <QDebug>
 
@@ -29,6 +30,12 @@ InstanceProxyModel::InstanceProxyModel(QObject* parent) : QSortFilterProxyModel(
     m_naturalSort.setCaseSensitivity(Qt::CaseSensitivity::CaseInsensitive);
     // FIXME: use loaded translation as source of locale instead, hook this up to translation changes
     m_naturalSort.setLocale(QLocale::system());
+
+    if (auto sortSetting = APPLICATION->settings()->getSetting("InstSortMode")) {
+        m_sortMode = sortSetting->get().toString();
+        connect(sortSetting.get(), &Setting::SettingChanged, this,
+                [this](const Setting&, QVariant value) { m_sortMode = value.toString(); });
+    }
 }
 
 QVariant InstanceProxyModel::data(const QModelIndex& index, int role) const
@@ -60,7 +67,7 @@ bool InstanceProxyModel::subSortLessThan(const QModelIndex& left, const QModelIn
 {
     BaseInstance* pdataLeft = static_cast<BaseInstance*>(left.internalPointer());
     BaseInstance* pdataRight = static_cast<BaseInstance*>(right.internalPointer());
-    QString sortMode = APPLICATION->settings()->get("InstSortMode").toString();
+    const QString& sortMode = m_sortMode;
     if (sortMode == "LastLaunch") {
         return pdataLeft->lastLaunch() > pdataRight->lastLaunch();
     } else if (sortMode == "Custom") {

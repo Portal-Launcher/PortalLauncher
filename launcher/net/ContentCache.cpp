@@ -4,8 +4,11 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QMutex>
+#include <QMutexLocker>
 
 #include <filesystem>
 
@@ -48,10 +51,36 @@ bool tryHardLink(const QString& src, const QString& dst)
     return !err;
 }
 
-void pruneToCap()
+void pruneToCap(qint64 addedBytes)
 {
+    // Called after every store(). A modpack install stores hundreds of files,
+    // and a full sweep opens a file handle per pool entry (hardLinkCount), so
+    // O(files x pool) adds whole seconds to installs. Two escape hatches keep
+    // it honest instead: skip unless enough time passed or enough bytes
+    // arrived, and skip the per-entry handle pass while the naive size total
+    // already fits the cap.
+    static QMutex pruneMutex;
+    static QElapsedTimer sincePrune;  // invalid until the first sweep
+    static qint64 bytesSincePrune = 0;
+    constexpr qint64 PRUNE_BYTE_STEP = qint64(256) * 1024 * 1024;
+
+    QMutexLocker locker(&pruneMutex);
+    bytesSincePrune += addedBytes;
+    if (sincePrune.isValid() && sincePrune.elapsed() < 30 * 1000 && bytesSincePrune < PRUNE_BYTE_STEP)
+        return;
+    sincePrune.restart();
+    bytesSincePrune = 0;
+
     QDir dir(cacheDir());
     auto entries = dir.entryInfoList(QDir::Files, QDir::Time);  // newest first
+    qint64 naiveTotal = 0;
+    for (const auto& info : entries)
+        naiveTotal += info.size();
+    // Under the cap even when counting still-linked entries: nothing could be
+    // evicted anyway, so do not pay for a link-count stat per entry.
+    if (naiveTotal <= DEFAULT_CAP_BYTES)
+        return;
+
     // An entry some instance still links to shares its bytes with that
     // instance, so it is free to keep and eviction would save nothing.
     // Only unlinked leftovers count against the cap.
@@ -107,7 +136,7 @@ void ContentCache::store(const QString& hashType, const QString& hash, const QSt
             return;
         }
     }
-    pruneToCap();
+    pruneToCap(QFileInfo(path).size());
 }
 
 bool ContentCache::deploy(const QString& cachedPath, const QString& destPath, const QString& hashType, const QString& hash)

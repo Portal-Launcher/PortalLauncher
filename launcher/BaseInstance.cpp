@@ -76,6 +76,10 @@ BaseInstance::BaseInstance(SettingsObject* globalSettings, std::unique_ptr<Setti
     m_settings = std::move(settings);
     m_global_settings = globalSettings;
     m_rootDir = rootDir;
+    // id() sits on paint and lookup hot paths (delegates, group resolution,
+    // O(N) list scans); deriving it through QFileInfo every call is measurable
+    // with large instance counts, so derive it exactly once.
+    m_id = QFileInfo(rootDir).fileName();
 
     m_settings->registerSetting("name", "Unnamed Instance");
     m_settings->registerSetting("iconKey", "default");
@@ -281,7 +285,7 @@ BaseInstance::Status BaseInstance::currentStatus() const
 
 QString BaseInstance::id() const
 {
-    return QFileInfo(instanceRoot()).fileName();
+    return m_id;
 }
 
 bool BaseInstance::isRunning() const

@@ -312,6 +312,7 @@ class BaseInstance : public QObject {
 
    protected: /* data */
     QString m_rootDir;
+    QString m_id;  // cached QFileInfo(m_rootDir).fileName(); hot in paints
     std::unique_ptr<SettingsObject> m_settings;
     // InstanceFlags m_flags;
     bool m_isRunning = false;
