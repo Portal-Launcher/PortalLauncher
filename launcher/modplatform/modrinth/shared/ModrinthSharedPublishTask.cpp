@@ -212,8 +212,14 @@ void ModrinthSharedPublishTask::executeTask()
     const QString configSpec = m_attachment.configSpec;
     const bool configsShared = !configSpec.isEmpty() && configSpec != QLatin1String("none");
     // The optional-mods fingerprint busts the fast path when only optionality
-    // changed, so a push still happens even though no file content did.
-    m_environment = m_gameVersion + '/' + m_loader + '/' + m_loaderVersion + '|' + configSpec + '|' + optionalListsFingerprint();
+    // changed, so a push still happens even though no file content did. The
+    // servers.dat stamp does the same for server list edits.
+    const QFileInfo serversInfo(FS::PathCombine(m_instance->gameRoot(), "servers.dat"));
+    const QString serversStamp = serversInfo.exists() ? QString::number(serversInfo.size()) + ':' +
+                                                            QString::number(serversInfo.lastModified().toMSecsSinceEpoch())
+                                                      : QString();
+    m_environment = m_gameVersion + '/' + m_loader + '/' + m_loaderVersion + '|' + configSpec + '|' +
+                    optionalListsFingerprint() + '|' + serversStamp;
     if (!m_force && m_hasAttachment && m_attachment.appliedVersion >= 0 && !m_attachment.quickFingerprint.isEmpty() &&
         m_environment == m_attachment.lastPushEnvironment &&
         ModrinthShared::quickContentFingerprint(m_instance->gameRoot(), configsShared) == m_attachment.quickFingerprint) {
@@ -254,6 +260,7 @@ void ModrinthSharedPublishTask::afterScan(const ScanResult& scan)
     m_files = scan.files;
     m_configPaths = scan.configPaths;
     m_configHashLines = scan.configHashLines;
+    m_sharedServers = scan.servers;
     m_skippedDisabled = scan.skippedDisabled;
 
     m_pendingHashes.clear();
@@ -345,6 +352,10 @@ ModrinthSharedPublishTask::ScanResult ModrinthSharedPublishTask::scanContent(con
         }
     }
     hashCache.save();
+
+    // The owner's server list rides along so friends land on the same
+    // servers, not just the same pack.
+    result.servers = ServersDat::read(FS::PathCombine(gameRoot, "servers.dat"));
     return result;
 }
 
@@ -471,7 +482,7 @@ void ModrinthSharedPublishTask::createRemoteVersion()
         obj["file_type"] = "configs";
         externalData.append(obj);
     }
-    if (!m_attachment.optionalProjects.isEmpty() || !m_attachment.optionalFiles.isEmpty()) {
+    if (!m_attachment.optionalProjects.isEmpty() || !m_attachment.optionalFiles.isEmpty() || !m_sharedServers.isEmpty()) {
         QJsonObject obj;
         obj["file_name"] = ModrinthShared::SHARE_META_FILE_NAME;
         obj["file_type"] = "mod";
@@ -673,6 +684,11 @@ QString ModrinthSharedPublishTask::computeSignature() const
     parts << "cfg:" + configs.join(',');
     parts << "env:" + m_gameVersion + '/' + m_loader + '/' + m_loaderVersion;
     parts << "opt:" + optionalListsFingerprint();
+    QStringList servers;
+    for (const auto& server : m_sharedServers)
+        servers.append(server.address.trimmed().toLower() + ':' + server.name);
+    servers.sort();
+    parts << "srv:" + servers.join(',');
     return QString::fromLatin1(
         QCryptographicHash::hash(parts.join('\n').toUtf8(), QCryptographicHash::Sha256).toHex());
 }
@@ -697,6 +713,14 @@ QByteArray ModrinthSharedPublishTask::buildShareMetaBytes() const
     QJsonObject root;
     root["format"] = 1;
     root["optional"] = optional;
+    QJsonArray servers;
+    for (const auto& server : m_sharedServers) {
+        QJsonObject serverObj;
+        serverObj["name"] = server.name;
+        serverObj["ip"] = server.address;
+        servers.append(serverObj);
+    }
+    root["servers"] = servers;
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 

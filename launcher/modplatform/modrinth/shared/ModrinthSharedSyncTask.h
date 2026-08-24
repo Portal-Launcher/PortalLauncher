@@ -17,6 +17,7 @@
 #include <atomic>
 
 #include "ModrinthSharedAttachment.h"
+#include "minecraft/ServersDat.h"
 #include "net/NetJob.h"
 #include "tasks/Task.h"
 
@@ -86,6 +87,7 @@ class ModrinthSharedSyncTask : public Task {
     QString m_shareMetaUrl;
     QSet<QString> m_optionalProjects;
     QSet<QString> m_optionalFiles;
+    QList<ServersDat::Entry> m_metaServers;  // the owner's shared server list
     QStringList m_changeLog;
     QTemporaryDir m_tempDir;
 

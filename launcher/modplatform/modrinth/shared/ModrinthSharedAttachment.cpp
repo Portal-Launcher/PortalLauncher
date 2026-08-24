@@ -68,6 +68,14 @@ std::optional<Attachment> Attachment::load(const QString& instanceRoot)
         att.optionalFiles.append(value.toString());
     for (const auto& value : obj.value("disabledOptional").toArray())
         att.disabledOptional.append(value.toString());
+    for (const auto& value : obj.value("sharedServers").toArray()) {
+        const auto serverObj = value.toObject();
+        SharedServer server;
+        server.name = serverObj.value("name").toString();
+        server.address = serverObj.value("ip").toString();
+        if (!server.address.trimmed().isEmpty())
+            att.sharedServers.append(server);
+    }
 
     // The id ends up in service URL paths and in an icon filename, so a
     // malformed one (from a hand-edited or malicious file) must never load.
@@ -109,6 +117,14 @@ bool Attachment::save(const QString& instanceRoot) const
     obj["optionalProjects"] = QJsonArray::fromStringList(optionalProjects);
     obj["optionalFiles"] = QJsonArray::fromStringList(optionalFiles);
     obj["disabledOptional"] = QJsonArray::fromStringList(disabledOptional);
+    QJsonArray servers;
+    for (const auto& server : sharedServers) {
+        QJsonObject serverObj;
+        serverObj["name"] = server.name;
+        serverObj["ip"] = server.address;
+        servers.append(serverObj);
+    }
+    obj["sharedServers"] = servers;
 
     try {
         FS::write(filePath(instanceRoot), QJsonDocument(obj).toJson(QJsonDocument::Indented));

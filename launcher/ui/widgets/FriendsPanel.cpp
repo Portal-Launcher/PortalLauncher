@@ -18,6 +18,7 @@
 #include "Application.h"
 #include "BaseInstance.h"
 #include "InstanceList.h"
+#include "minecraft/launch/MinecraftTarget.h"
 #include "modplatform/modrinth/shared/ModrinthFriends.h"
 #include "modplatform/modrinth/shared/ModrinthJoinFlow.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
@@ -493,7 +494,7 @@ void FriendsPanel::itemDoubleClicked(QTreeWidgetItem* item, int)
     // Friend rows: join or launch what they are playing, if we matched it.
     const QString localInstanceId = item->data(0, LocalInstanceIdRole).toString();
     if (!localInstanceId.isEmpty()) {
-        launchLocalInstance(localInstanceId);
+        launchLocalInstance(localInstanceId, /*joinSharedServer*/ true);
         return;
     }
     const QString friendInviteId = item->data(0, FriendInviteIdRole).toString();
@@ -501,7 +502,7 @@ void FriendsPanel::itemDoubleClicked(QTreeWidgetItem* item, int)
         joinInvite(friendInviteId, item->data(0, FriendInviteNameRole).toString());
 }
 
-void FriendsPanel::launchLocalInstance(const QString& instanceId)
+void FriendsPanel::launchLocalInstance(const QString& instanceId, bool joinSharedServer)
 {
     auto* instance = APPLICATION->instances()->getInstanceById(instanceId);
     if (!instance)
@@ -510,7 +511,15 @@ void FriendsPanel::launchLocalInstance(const QString& instanceId)
         QMessageBox::information(this, tr("Already running"), tr("\"%1\" is already running.").arg(instance->name()));
         return;
     }
-    APPLICATION->launch(instance);
+    // "Play along" should end in the same world, not just the same pack: when
+    // the share carries the owner's server list, go straight to its first
+    // server.
+    MinecraftTarget::Ptr target;
+    if (joinSharedServer) {
+        if (auto att = ModrinthShared::Attachment::load(instance->instanceRoot()); att && !att->sharedServers.isEmpty())
+            target = std::make_shared<MinecraftTarget>(MinecraftTarget::parse(att->sharedServers.first().address, false));
+    }
+    APPLICATION->launch(instance, LaunchMode::Normal, target);
 }
 
 void FriendsPanel::joinInvite(const QString& instanceId, const QString& instanceName)
@@ -588,8 +597,25 @@ void FriendsPanel::showContextMenu(const QPoint& pos)
         const QString friendInviteId = item->data(0, FriendInviteIdRole).toString();
         const QString friendInviteName = item->data(0, FriendInviteNameRole).toString();
         if (!localInstanceId.isEmpty()) {
-            menu.addAction(tr("Launch \"%1\" and play along").arg(localInstanceName), this,
-                           [this, localInstanceId]() { launchLocalInstance(localInstanceId); });
+            // When the share carries the owner's server list, offer to land on
+            // the same server directly; plain launch stays available.
+            QString serverLabel;
+            if (auto* inst = APPLICATION->instances()->getInstanceById(localInstanceId)) {
+                if (auto att = ModrinthShared::Attachment::load(inst->instanceRoot());
+                    att && !att->sharedServers.isEmpty()) {
+                    const auto& server = att->sharedServers.first();
+                    serverLabel = server.name.trimmed().isEmpty() ? server.address : server.name;
+                }
+            }
+            if (!serverLabel.isEmpty()) {
+                menu.addAction(tr("Launch \"%1\" and join %2").arg(localInstanceName, serverLabel), this,
+                               [this, localInstanceId]() { launchLocalInstance(localInstanceId, true); });
+                menu.addAction(tr("Launch \"%1\" only").arg(localInstanceName), this,
+                               [this, localInstanceId]() { launchLocalInstance(localInstanceId, false); });
+            } else {
+                menu.addAction(tr("Launch \"%1\" and play along").arg(localInstanceName), this,
+                               [this, localInstanceId]() { launchLocalInstance(localInstanceId, true); });
+            }
             menu.addSeparator();
         } else if (!friendInviteId.isEmpty()) {
             menu.addAction(tr("Join their pack \"%1\"").arg(friendInviteName), this,

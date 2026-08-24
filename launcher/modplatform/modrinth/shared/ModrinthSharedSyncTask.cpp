@@ -216,10 +216,12 @@ void ModrinthSharedSyncTask::resolveProjects()
 void ModrinthSharedSyncTask::fetchShareMeta()
 {
     // Fork clients attach an extra metadata file to the share (optional-mods
-    // lists). Absent or unreadable metadata just means "everything required".
+    // lists, the owner's server list). Absent or unreadable metadata just
+    // means "everything required, no shared servers".
     m_shareMetaUrl.clear();
     m_optionalProjects.clear();
     m_optionalFiles.clear();
+    m_metaServers.clear();
     for (const auto& value : m_remoteVersion.value("external_files").toArray()) {
         const auto ext = value.toObject();
         if (ext.value("file_name").toString() == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
@@ -239,6 +241,14 @@ void ModrinthSharedSyncTask::fetchShareMeta()
                 m_optionalProjects.insert(value.toString());
             for (const auto& value : optional.value("files").toArray())
                 m_optionalFiles.insert(value.toString());
+            for (const auto& value : root.value("servers").toArray()) {
+                const auto serverObj = value.toObject();
+                ServersDat::Entry entry;
+                entry.name = serverObj.value("name").toString();
+                entry.address = serverObj.value("ip").toString();
+                if (!entry.address.trimmed().isEmpty())
+                    m_metaServers.append(entry);
+            }
         }
         buildTargetsAndDownload();
     });
@@ -633,6 +643,19 @@ void ModrinthSharedSyncTask::finish()
     m_attachment.optionalFiles = QStringList(m_optionalFiles.begin(), m_optionalFiles.end());
     m_attachment.optionalProjects.sort();
     m_attachment.optionalFiles.sort();
+
+    // Merge the owner's server list into this member's servers.dat: only
+    // additions, never removals or edits of what the user already has.
+    if (!m_metaServers.isEmpty()) {
+        const int added = ServersDat::mergeAppend(FS::PathCombine(m_instance->gameRoot(), "servers.dat"), m_metaServers);
+        if (added > 0)
+            m_changeLog.append(tr("Added %n server(s) to your server list", "", added));
+        m_attachment.sharedServers.clear();
+        for (const auto& entry : m_metaServers)
+            m_attachment.sharedServers.append({ entry.name, entry.address });
+    } else {
+        m_attachment.sharedServers.clear();
+    }
 
     // Update Minecraft / loader versions if the owner changed them.
     const QString gameVersion = m_remoteVersion.value("game_version").toString();

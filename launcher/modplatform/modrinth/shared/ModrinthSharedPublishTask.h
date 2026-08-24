@@ -16,6 +16,7 @@
 #include <optional>
 
 #include "ModrinthSharedAttachment.h"
+#include "minecraft/ServersDat.h"
 #include "tasks/Task.h"
 
 class MinecraftInstance;
@@ -50,6 +51,7 @@ class ModrinthSharedPublishTask : public Task {
         QList<ContentFile> files;
         QStringList configPaths;      // relative to <gameRoot>/config
         QStringList configHashLines;  // "rel:sha1" per selected config file
+        QList<ServersDat::Entry> servers;  // the owner's multiplayer server list
         int skippedDisabled = 0;
     };
 
@@ -93,6 +95,7 @@ class ModrinthSharedPublishTask : public Task {
     QString m_environment;  // gameVersion/loader/loaderVersion|configSpec
     QString m_signature;    // full content signature, computed once per run
     QStringList m_configHashLines;  // from the scan; feeds computeSignature
+    QList<ServersDat::Entry> m_sharedServers;  // from the scan; rides the share metadata
 
     std::atomic_bool m_aborted{ false };
     bool m_abortEmitted = false;

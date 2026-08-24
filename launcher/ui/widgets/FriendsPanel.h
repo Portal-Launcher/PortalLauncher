@@ -44,7 +44,9 @@ class FriendsPanel : public QDockWidget {
    private:
     void acceptRequest(const QString& userId, const QString& username);
     void joinInvite(const QString& instanceId, const QString& instanceName);
-    void launchLocalInstance(const QString& instanceId);
+    /** joinSharedServer: also connect to the pack's first shared server, when
+     *  the share carries one (the "play along" default). */
+    void launchLocalInstance(const QString& instanceId, bool joinSharedServer);
     /** Badge the toolbar action with pending invites + incoming requests. */
     void updateViewAction(int attentionCount);
     void signOutClicked();

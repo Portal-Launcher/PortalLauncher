@@ -22,6 +22,12 @@ struct ManagedFile {
     QString optionalKey;  // non-empty when the owner marked this optional (project id or file name)
 };
 
+/** A multiplayer server the pack's owner shares with everyone in the pack. */
+struct SharedServer {
+    QString name;
+    QString address;
+};
+
 class Attachment {
    public:
     QString id;                 // shared instance id on the service
@@ -46,6 +52,9 @@ class Attachment {
     QStringList optionalFiles;
     // Member only: optional keys this user has turned off; sync keeps them off.
     QStringList disabledOptional;
+    // The owner's shared server list, mirrored on sync. Lets "play along"
+    // launch straight into the same server, not just the same pack.
+    QList<SharedServer> sharedServers;
 
     bool isOwner() const { return role == QLatin1String("owner"); }
     bool isMember() const { return role == QLatin1String("member"); }
