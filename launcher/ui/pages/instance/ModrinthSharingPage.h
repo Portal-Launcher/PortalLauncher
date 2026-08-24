@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStringList>
 #include <QWidget>
 
 #include "ui/pages/BasePage.h"
@@ -60,6 +61,11 @@ class ModrinthSharingPage : public QWidget, public BasePage {
    private:
     void loadMembers();
     QString currentConfigSpec() const;
+    /** Names of other local instances attached to the same shared pack, which
+     *  is what a copy of a shared instance leaves behind. */
+    QStringList otherInstancesSharing(const QString& shareId) const;
+    /** Drops the share attachment without touching the service. */
+    void detachLocally();
 
     BaseInstance* m_instance;
 

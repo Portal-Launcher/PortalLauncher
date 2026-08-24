@@ -5,6 +5,7 @@
 #include "FileSystem.h"
 #include "Filter.h"
 #include "NullInstance.h"
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "settings/INISettingsObject.h"
 #include "tasks/Task.h"
 
@@ -144,6 +145,12 @@ void InstanceCopyTask::copyFinished()
         emitFailed(tr("Instance folder copy failed."));
         return;
     }
+
+    // A copy is a brand new instance, not a second face of the original's
+    // shared pack. Leaving the attachment behind would make the copy claim the
+    // original's share: it would show as shared, push or pull the original's
+    // files on launch, and "Stop sharing" on it would delete the real share.
+    ModrinthShared::Attachment::remove(m_stagingPath);
 
     // FIXME: shouldn't this be able to report errors?
     auto instanceSettings = std::make_unique<INISettingsObject>(FS::PathCombine(m_stagingPath, "instance.cfg"));

@@ -48,6 +48,7 @@
 
 #include "modplatform/flame/FlameInstanceCreationTask.h"
 #include "modplatform/modrinth/ModrinthInstanceCreationTask.h"
+#include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
 #include "modplatform/technic/TechnicPackProcessor.h"
 
 #include "settings/INISettingsObject.h"
@@ -341,6 +342,10 @@ void InstanceImportTask::processTechnic()
 
 void InstanceImportTask::processMultiMC()
 {
+    // An exported instance can carry the exporter's share attachment. Joining a
+    // shared pack is its own flow, so an imported zip always starts unshared.
+    ModrinthShared::Attachment::remove(m_stagingPath);
+
     QString configPath = FS::PathCombine(m_stagingPath, "instance.cfg");
     auto instanceSettings = std::make_unique<INISettingsObject>(configPath);
 

@@ -74,6 +74,10 @@ ExportInstanceDialog::ExportInstanceDialog(BaseInstance* instance, QWidget* pare
         m_proxyModel->ignoreFilesWithPath().insert(FS::PathCombine(prefix, path));
     }
     m_proxyModel->ignoreFilesWithName().append({ ".DS_Store", "thumbs.db", "Thumbs.db" });
+    // The share attachment is this install's link to a shared pack. Shipping it
+    // inside an export would hand whoever imports the zip a copy that claims the
+    // same share.
+    m_proxyModel->ignoreFilesWithPath().insert(QStringLiteral("shared-instance.json"));
     m_proxyModel->loadBlockedPathsFromFile(ignoreFileName());
 
     m_ui->treeView->setModel(m_proxyModel);

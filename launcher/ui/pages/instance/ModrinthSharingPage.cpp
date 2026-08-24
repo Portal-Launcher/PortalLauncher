@@ -13,6 +13,7 @@
 
 #include "Application.h"
 #include "BaseInstance.h"
+#include "InstanceList.h"
 #include "minecraft/MinecraftInstance.h"
 #include "modplatform/modrinth/shared/ModrinthSharedApi.h"
 #include "modplatform/modrinth/shared/ModrinthSharedAttachment.h"
@@ -491,22 +492,92 @@ void ModrinthSharingPage::syncNow()
     refresh();
 }
 
+QStringList ModrinthSharingPage::otherInstancesSharing(const QString& shareId) const
+{
+    QStringList names;
+    auto* instances = APPLICATION->instances();
+    for (int i = 0; i < instances->count(); i++) {
+        auto* other = instances->at(i);
+        if (!other || other->id() == m_instance->id())
+            continue;
+        if (auto att = ModrinthShared::Attachment::load(other->instanceRoot()); att && att->id == shareId)
+            names.append(other->name());
+    }
+    return names;
+}
+
+void ModrinthSharingPage::detachLocally()
+{
+    ModrinthShared::Attachment::remove(m_instance->instanceRoot());
+    m_inviteLinkEdit->clear();
+    refresh();
+}
+
 void ModrinthSharingPage::stopSharing()
 {
     auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
     if (!attachment)
         return;
-    if (QMessageBox::question(this, tr("Stop sharing"),
-                              tr("Stop sharing \"%1\"? Your friends will lose access to updates.").arg(m_instance->name())) !=
-        QMessageBox::Yes)
-        return;
-    ModrinthShared::deleteRemoteInstance(this, attachment->id, [this](const ModrinthShared::Response& res) {
-        if (!res.ok) {
-            QMessageBox::warning(this, tr("Stop sharing"), res.error);
+
+    // A copy made before instance duplication learned to drop the attachment
+    // points at the same shared pack as its original. Deleting the pack from
+    // here would take the original's share down with it, so offer to detach
+    // this instance instead.
+    const QStringList twins = otherInstancesSharing(attachment->id);
+    if (!twins.isEmpty()) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Stop sharing"));
+        box.setText(tr("\"%1\" points at the same shared pack as %2.").arg(m_instance->name(), twins.join(", ")));
+        box.setInformativeText(tr("That usually means this instance is a copy. Detaching only this instance leaves the "
+                                  "shared pack and your friends alone. Deleting the shared pack stops it for every "
+                                  "instance attached to it, including the other one."));
+        auto* detachButton = box.addButton(tr("Detach this instance"), QMessageBox::AcceptRole);
+        auto* deleteButton = box.addButton(tr("Delete the shared pack"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(detachButton);
+        box.exec();
+        if (box.clickedButton() == detachButton) {
+            detachLocally();
             return;
         }
-        ModrinthShared::Attachment::remove(m_instance->instanceRoot());
-        refresh();
+        if (box.clickedButton() != deleteButton)
+            return;
+    } else if (QMessageBox::question(this, tr("Stop sharing"),
+                                     tr("Stop sharing \"%1\"? Your friends will lose access to updates.")
+                                         .arg(m_instance->name())) != QMessageBox::Yes) {
+        return;
+    }
+
+    ModrinthShared::deleteRemoteInstance(this, attachment->id, [this](const ModrinthShared::Response& res) {
+        if (res.ok) {
+            detachLocally();
+            return;
+        }
+        // Never leave an instance stuck as shared. The pack may already be gone
+        // on Modrinth, or belong to someone else, and either way the user has to
+        // be able to get this instance back to normal.
+        const bool gone = res.status == 401 || res.status == 403 || res.status == 404;
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Stop sharing"));
+        box.setText(gone ? tr("Modrinth would not delete this shared pack. It has probably been deleted already, or it "
+                              "belongs to another account.")
+                         : tr("The shared pack could not be deleted on Modrinth right now."));
+        box.setInformativeText(gone ? tr("You can detach this instance anyway: it keeps all of its files and simply "
+                                         "stops being a shared pack.")
+                                    : tr("You can detach this instance anyway, but the shared pack would stay up on "
+                                         "Modrinth and you would have to delete it from the Modrinth app."));
+        box.setDetailedText(res.error);
+        auto* detachButton = box.addButton(tr("Detach anyway"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Cancel);
+        if (gone)
+            box.setDefaultButton(detachButton);
+        else
+            box.setDefaultButton(QMessageBox::Cancel);
+        box.exec();
+        if (box.clickedButton() == detachButton)
+            detachLocally();
     });
 }
 
@@ -518,11 +589,11 @@ void ModrinthSharingPage::leaveShare()
                                   .arg(m_instance->name())) != QMessageBox::Yes)
         return;
     // Tell the service too (best effort) so the owner's member list does not
-    // keep showing us forever.
+    // keep showing us forever. Not when another instance is attached to the same
+    // pack though - that one is still a member and would lose its access.
     auto attachment = ModrinthShared::Attachment::load(m_instance->instanceRoot());
-    if (attachment && ModrinthShared::isSignedIn())
+    if (attachment && ModrinthShared::isSignedIn() && otherInstancesSharing(attachment->id).isEmpty())
         ModrinthShared::removeMembers(nullptr, attachment->id, { ModrinthShared::userId() },
                                       [](const ModrinthShared::Response&) {});
-    ModrinthShared::Attachment::remove(m_instance->instanceRoot());
-    refresh();
+    detachLocally();
 }
