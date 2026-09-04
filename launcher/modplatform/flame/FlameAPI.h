@@ -31,6 +31,13 @@ class FlameAPI : public ResourceAPI {
     // Shared profiles: the codes the CurseForge app hands out from "Share Profile".
     // A code resolves to a normal CurseForge modpack zip, so we can import it through
     // the usual Flame pipeline once we turn the code into its download URL.
+    // Where a CurseForge file lives on their CDN. The API leaves downloadUrl
+    // empty for projects that opted out of third party launchers; the file is
+    // still served from the same place, so this is what lets updates and pack
+    // installs fetch those mods instead of asking people to do it by hand.
+    // Every download built from it is checked against the API's hash.
+    static QString cdnFileUrl(int fileId, const QString& fileName);
+
     static bool isShareCode(const QString& input);
     static QString shareProfileDownloadUrl(const QString& code);
     std::pair<Task::Ptr, QByteArray*> getSharedProfileMetadata(const QString& code) const;

@@ -40,6 +40,34 @@ class ModrinthSharedTest : public QObject {
         QCOMPARE(parseInviteRef(ref), expected);
     }
 
+    void test_isTrustedDownloadUrl_data()
+    {
+        QTest::addColumn<QString>("url");
+        QTest::addColumn<bool>("trusted");
+
+        QTest::newRow("modrinth cdn") << "https://cdn.modrinth.com/data/AANobbMI/versions/x/sodium.jar" << true;
+        QTest::newRow("modrinth apex") << "https://modrinth.com/x.jar" << true;
+        QTest::newRow("service bucket")
+            << "https://shared-instances.9ddae624c98677d68d93df6e524a6061.r2.cloudflarestorage.com/pKjQg68h/0/AE2-Things.jar?"
+               "x-id=GetObject&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc"
+            << true;
+        QTest::newRow("plain http") << "http://cdn.modrinth.com/x.jar" << false;
+        QTest::newRow("host suffix trick") << "https://notmodrinth.com/x.jar" << false;
+        QTest::newRow("host prefix trick") << "https://cdn.modrinth.com.evil.example/x.jar" << false;
+        QTest::newRow("other bucket") << "https://evil.9ddae624c98677d68d93df6e524a6061.r2.cloudflarestorage.com/x.jar" << false;
+        QTest::newRow("bucket without account") << "https://shared-instances.r2.cloudflarestorage.com/x.jar" << false;
+        QTest::newRow("bucket prefix trick") << "https://shared-instances.abcdef0123456789.r2.cloudflarestorage.com.evil.example/x.jar"
+                                             << false;
+        QTest::newRow("empty") << "" << false;
+    }
+
+    void test_isTrustedDownloadUrl()
+    {
+        QFETCH(QString, url);
+        QFETCH(bool, trusted);
+        QCOMPARE(isTrustedDownloadUrl(QUrl(url)), trusted);
+    }
+
     void test_attachmentRoundTrip()
     {
         QTemporaryDir root;

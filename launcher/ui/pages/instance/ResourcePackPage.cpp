@@ -179,7 +179,7 @@ void ResourcePackPage::updateResourcePacks()
                 message = tr("All selected resource packs are up-to-date! :)");
             }
         }
-        CustomMessageBox::selectable(this, tr("Update checker"), message)->exec();
+        CustomMessageBox::selectable(this, tr("Update checker"), message + updateDialog.skippedNote())->exec();
         return;
     }
 

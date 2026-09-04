@@ -162,7 +162,7 @@ void DataPackPage::updateDataPacks()
                 message = tr("All selected data packs are up-to-date! :)");
             }
         }
-        CustomMessageBox::selectable(this, tr("Update checker"), message)->exec();
+        CustomMessageBox::selectable(this, tr("Update checker"), message + updateDialog.skippedNote())->exec();
         return;
     }
 

@@ -115,4 +115,11 @@ QString inviteLink(const QString& inviteId);
 /** Extracts the invite id from a modrinth.com/share/... link or returns the input unchanged. */
 QString parseInviteRef(const QString& ref);
 
+/** Whether a file URL handed out by the shared-instances service may be
+ *  downloaded into an instance. Modrinth-hosted content comes from
+ *  *.modrinth.com; files the pack owner uploaded are served from the
+ *  service's own bucket as presigned R2 links. Anything else is refused,
+ *  since it could feed unverified jars straight into mods/. */
+bool isTrustedDownloadUrl(const QUrl& url);
+
 }  // namespace ModrinthShared

@@ -5,6 +5,7 @@
 #include "FlameAPI.h"
 #include <QFile>
 #include <QRegularExpression>
+#include <QUrl>
 #include <memory>
 #include <optional>
 #include "BuildConfig.h"
@@ -173,6 +174,16 @@ bool FlameAPI::isShareCode(const QString& input)
     if (QFile::exists(input))
         return false;
     return true;
+}
+
+QString FlameAPI::cdnFileUrl(int fileId, const QString& fileName)
+{
+    if (fileId <= 0 || fileName.isEmpty())
+        return {};
+    return QStringLiteral("https://edge.forgecdn.net/files/%1/%2/%3")
+        .arg(fileId / 1000)
+        .arg(fileId % 1000)
+        .arg(QString::fromUtf8(QUrl::toPercentEncoding(fileName)));
 }
 
 QString FlameAPI::shareProfileDownloadUrl(const QString& code)

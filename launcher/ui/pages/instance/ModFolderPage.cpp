@@ -522,7 +522,7 @@ void ModFolderPage::updateMods(bool includeDeps)
                 message = tr("All selected mods are up-to-date! :)");
             }
         }
-        CustomMessageBox::selectable(this, tr("Update checker"), message)->exec();
+        CustomMessageBox::selectable(this, tr("Update checker"), message + updateDialog.skippedNote())->exec();
         return;
     }
 

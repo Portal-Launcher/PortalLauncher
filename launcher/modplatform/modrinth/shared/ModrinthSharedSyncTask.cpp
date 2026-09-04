@@ -40,16 +40,6 @@ bool isSafeFileName(const QString& name)
     return !name.isEmpty() && !name.contains('/') && !name.contains('\\') && !name.startsWith('.') && !name.contains("..");
 }
 
-/** Every URL the service hands us must be https on a Modrinth host; anything
- *  else could feed unverified executable files straight into mods/. */
-bool isTrustedDownloadUrl(const QUrl& url)
-{
-    if (url.scheme() != QLatin1String("https"))
-        return false;
-    const QString host = url.host().toLower();
-    return host == QLatin1String("modrinth.com") || host.endsWith(QLatin1String(".modrinth.com"));
-}
-
 }  // namespace
 
 ModrinthSharedSyncTask::ModrinthSharedSyncTask(BaseInstance* instance, bool softFail) : Task(), m_soft(softFail)
@@ -227,7 +217,7 @@ void ModrinthSharedSyncTask::fetchShareMeta()
         if (ext.value("file_name").toString() == QLatin1String(ModrinthShared::SHARE_META_FILE_NAME))
             m_shareMetaUrl = ext.value("url").toString();
     }
-    if (m_shareMetaUrl.isEmpty() || !isTrustedDownloadUrl(QUrl(m_shareMetaUrl))) {
+    if (m_shareMetaUrl.isEmpty() || !ModrinthShared::isTrustedDownloadUrl(QUrl(m_shareMetaUrl))) {
         buildTargetsAndDownload();
         return;
     }
@@ -348,12 +338,12 @@ void ModrinthSharedSyncTask::buildTargetsAndDownload()
 
     // Validate every download URL before touching any local file.
     for (const auto& target : m_targets) {
-        if (!isTrustedDownloadUrl(QUrl(target.url))) {
+        if (!ModrinthShared::isTrustedDownloadUrl(QUrl(target.url))) {
             softOrFail(tr("Refusing to download %1 from an untrusted address (%2).").arg(target.rel, target.url));
             return;
         }
     }
-    if (!m_configBundleUrl.isEmpty() && !isTrustedDownloadUrl(QUrl(m_configBundleUrl))) {
+    if (!m_configBundleUrl.isEmpty() && !ModrinthShared::isTrustedDownloadUrl(QUrl(m_configBundleUrl))) {
         softOrFail(tr("Refusing to download the shared config bundle from an untrusted address (%1).").arg(m_configBundleUrl));
         return;
     }
@@ -561,7 +551,7 @@ void ModrinthSharedSyncTask::adoptOwnerIcon(std::function<void()> next)
             return;
         m_attachment.iconCheckedAt = QDateTime::currentSecsSinceEpoch();
         const QString iconUrl = res.ok && res.json.isObject() ? res.json.object().value("icon").toString() : QString();
-        if (iconUrl.isEmpty() || !isTrustedDownloadUrl(QUrl(iconUrl))) {
+        if (iconUrl.isEmpty() || !ModrinthShared::isTrustedDownloadUrl(QUrl(iconUrl))) {
             next();
             return;
         }

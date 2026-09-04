@@ -31,6 +31,11 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
     auto indexDir() const -> QDir { return m_resourceModel->indexDir(); }
 
     auto noUpdates() const -> bool { return m_noUpdates; };
+    /** Resources that were left as they are, one human readable line each. */
+    auto skipped() const -> const QStringList& { return m_skipped; }
+    /** Text to append to an "everything is up to date" message so skipped
+     *  resources do not silently read as up to date. Empty when nothing was skipped. */
+    QString skippedNote() const;
     auto aborted() const -> bool { return m_aborted; };
 
    private:
@@ -62,6 +67,7 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
     QHash<QString, ResourceDownloadTask::Ptr> m_tasks;
     BaseInstance* m_instance;
 
+    QStringList m_skipped;
     bool m_noUpdates = false;
     bool m_aborted = false;
     bool m_includeDeps = false;

@@ -531,6 +531,21 @@ QString inviteLink(const QString& inviteId)
     return siteUrl() + "/share/" + QString::fromUtf8(QUrl::toPercentEncoding(inviteId));
 }
 
+bool isTrustedDownloadUrl(const QUrl& url)
+{
+    if (!url.isValid() || url.scheme() != QLatin1String("https"))
+        return false;
+    const QString host = url.host().toLower();
+    if (host == QLatin1String("modrinth.com") || host.endsWith(QLatin1String(".modrinth.com")))
+        return true;
+    // The service stores owner-uploaded files in Cloudflare R2 and hands out
+    // presigned links on its bucket: shared-instances.<account>.r2.cloudflarestorage.com
+    // The bucket label is fixed and the account label is a hex id; a link to
+    // somebody else's bucket on the same storage host does not pass.
+    static const QRegularExpression r2Host(QStringLiteral("^shared-instances\\.[0-9a-f]{16,64}\\.r2\\.cloudflarestorage\\.com$"));
+    return r2Host.match(host).hasMatch();
+}
+
 QString parseInviteRef(const QString& ref)
 {
     // Invite ids are plain base62; anything else never reaches the API.

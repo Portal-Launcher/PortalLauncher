@@ -187,6 +187,8 @@ auto FlameMod::loadIndexedPackVersion(QJsonObject& obj, bool load_changelog) -> 
     }
     file.downloadUrl = obj["downloadUrl"].toString();
     file.fileName = Json::requireString(obj, "fileName");
+    if (file.downloadUrl.isEmpty())
+        file.downloadUrl = FlameAPI::cdnFileUrl(file.fileId.toInt(), file.fileName);
     file.fileName = FS::RemoveInvalidPathChars(file.fileName);
 
     ModPlatform::IndexedVersionType ver_type;

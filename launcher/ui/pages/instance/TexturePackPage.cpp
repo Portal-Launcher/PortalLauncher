@@ -184,7 +184,7 @@ void TexturePackPage::updateTexturePacks()
                 message = tr("All selected texture packs are up-to-date! :)");
             }
         }
-        CustomMessageBox::selectable(this, tr("Update checker"), message)->exec();
+        CustomMessageBox::selectable(this, tr("Update checker"), message + updateDialog.skippedNote())->exec();
         return;
     }
 

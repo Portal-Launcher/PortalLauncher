@@ -3,7 +3,6 @@
 #include "ChooseProviderDialog.h"
 #include "CustomMessageBox.h"
 #include "ProgressDialog.h"
-#include "ScrollMessageBox.h"
 #include "StringUtils.h"
 #include "minecraft/mod/tasks/GetModDependenciesTask.h"
 #include "modplatform/ModIndex.h"
@@ -68,25 +67,14 @@ void ResourceUpdateDialog::checkCandidates()
         return;
     }
 
-    // Report failed metadata generation
-    if (!m_failedMetadata.empty()) {
-        QString text;
-        for (const auto& failed : m_failedMetadata) {
-            const auto& mod = std::get<0>(failed);
-            const auto& reason = std::get<1>(failed);
-            text += tr("Mod name: %1<br>File name: %2<br>Reason: %3<br><br>").arg(mod->name(), mod->fileinfo().fileName(), reason);
-        }
-
-        ScrollMessageBox messageDialog(m_parent, tr("Metadata generation failed"),
-                                       tr("Could not generate metadata for the following resources:<br>"
-                                          "Do you wish to proceed without those resources?"),
-                                       text);
-        messageDialog.setModal(true);
-        if (messageDialog.exec() == QDialog::Rejected) {
-            m_aborted = true;
-            QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
-            return;
-        }
+    // Resources that are on neither Modrinth nor CurseForge (hand-built jars,
+    // launcher clients, private mods) cannot be updated from here. That is
+    // not a question to stop and ask about every time: they are simply left
+    // alone and listed at the bottom of the review dialog.
+    for (const auto& failed : m_failedMetadata) {
+        const auto& mod = std::get<0>(failed);
+        qDebug() << mod->name() << "is not on any mod provider, leaving it as is";
+        m_skipped.append(tr("%1 (%2): not on Modrinth or CurseForge, left as is").arg(mod->name(), mod->fileinfo().fileName()));
     }
 
     auto versions = mcVersions(m_instance);
@@ -160,46 +148,17 @@ void ResourceUpdateDialog::checkCandidates()
         selectedVers.append(m_flameCheckTask->getDependencies());
     }
 
-    // Report failed update checking
-    if (!m_failedCheckUpdate.empty()) {
-        QString text;
-        for (const auto& failed : m_failedCheckUpdate) {
-            const auto& mod = std::get<0>(failed);
-            const auto& reason = std::get<1>(failed);
-            const auto& recoverUrl = std::get<2>(failed);
-
-            qDebug() << mod->name() << "failed to check for updates!";
-
-            text += tr("Mod name: %1").arg(mod->name()) + "<br>";
-            if (!reason.isEmpty()) {
-                text += tr("Reason: %1").arg(reason) + "<br>";
-            }
-            if (!recoverUrl.isEmpty()) {
-                //: %1 is the link to download it manually
-                text += tr("Possible solution: Getting the latest version manually:<br>%1<br>")
-                            .arg(QString("<a href='%1'>%1</a>").arg(recoverUrl.toString()));
-            }
-            text += "<br>";
-        }
-
-        ScrollMessageBox messageDialog(m_parent, tr("Failed to check for updates"),
-                                       tr("Could not check or get the following resources for updates:<br>"
-                                          "Do you wish to proceed without those resources?"),
-                                       text, "Disable unavailable mods");
-        messageDialog.setModal(true);
-        if (messageDialog.exec() == QDialog::Rejected) {
-            m_aborted = true;
-            QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
-            return;
-        }
-
-        // Disable unavailable mods
-        if (messageDialog.isOptionChecked()) {
-            for (const auto& failed : m_failedCheckUpdate) {
-                const auto& mod = std::get<0>(failed);
-                mod->enable(EnableAction::DISABLE);
-            }
-        }
+    // Same treatment for resources the provider could not offer a version for
+    // (nothing for this game version or loader, say): note it, move on.
+    for (const auto& failed : m_failedCheckUpdate) {
+        const auto& mod = std::get<0>(failed);
+        const auto& reason = std::get<1>(failed);
+        const auto& recoverUrl = std::get<2>(failed);
+        qDebug() << mod->name() << "failed to check for updates:" << reason;
+        QString line = reason.isEmpty() ? tr("%1: could not check for updates").arg(mod->name()) : tr("%1: %2").arg(mod->name(), reason);
+        if (!recoverUrl.isEmpty())
+            line += ' ' + tr("Get it by hand from %1").arg(recoverUrl.toString());
+        m_skipped.append(line);
     }
 
     const bool depsDisabled = APPLICATION->settings()->get("ModDependenciesDisabled").toBool();
@@ -289,6 +248,14 @@ void ResourceUpdateDialog::checkCandidates()
         // Always take a fresh row: a QGridLayout silently stacks widgets that
         // share a cell, and row 3 is not guaranteed to be free.
         ui->gridLayout->addWidget(warningLabel, ui->gridLayout->rowCount(), 0, 1, -1);
+    }
+
+    if (!m_skipped.isEmpty()) {
+        auto* skippedLabel = new QLabel(this);
+        skippedLabel->setWordWrap(true);
+        skippedLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        skippedLabel->setText(tr("Left alone (not updatable from here):\n%1").arg(m_skipped.join('\n')));
+        ui->gridLayout->addWidget(skippedLabel, ui->gridLayout->rowCount(), 0, 1, -1);
     }
 
     // If there's no resource to be updated
@@ -523,6 +490,13 @@ void ResourceUpdateDialog::onMetadataEnsured(Resource* resource)
             m_flameToUpdate.push_back(resource);
             break;
     }
+}
+
+QString ResourceUpdateDialog::skippedNote() const
+{
+    if (m_skipped.isEmpty())
+        return {};
+    return "\n\n" + tr("Left alone (not updatable from here):") + '\n' + m_skipped.join('\n');
 }
 
 ModPlatform::ResourceProvider next(ModPlatform::ResourceProvider p)
