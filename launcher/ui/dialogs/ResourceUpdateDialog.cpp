@@ -22,6 +22,10 @@
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 
 #include <QClipboard>
+#include <QDateTime>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QSet>
 #include <QShortcut>
@@ -77,83 +81,101 @@ void ResourceUpdateDialog::checkCandidates()
         m_skipped.append(tr("%1 (%2): not on Modrinth or CurseForge, left as is").arg(mod->name(), mod->fileinfo().fileName()));
     }
 
-    auto versions = mcVersions(m_instance);
-
-    SequentialTask checkTask(tr("Checking for updates"));
-
-    if (!m_modrinthToUpdate.empty()) {
-        m_modrinthCheckTask.reset(new ModrinthCheckUpdate(m_modrinthToUpdate, versions, m_loadersList, m_resourceModel));
-        connect(m_modrinthCheckTask.get(), &CheckUpdateTask::checkFailed, this,
-                [this](Resource* resource, const QString& reason, const QUrl& recoverUrl) {
-                    m_failedCheckUpdate.append({ resource, reason, recoverUrl });
-                });
-        checkTask.addTask(m_modrinthCheckTask);
-    }
-
-    if (!m_flameToUpdate.empty()) {
-        m_flameCheckTask.reset(new FlameCheckUpdate(m_flameToUpdate, versions, m_loadersList, m_resourceModel));
-        connect(m_flameCheckTask.get(), &CheckUpdateTask::checkFailed, this,
-                [this](Resource* resource, const QString& reason, const QUrl& recoverUrl) {
-                    m_failedCheckUpdate.append({ resource, reason, recoverUrl });
-                });
-        checkTask.addTask(m_flameCheckTask);
-    }
-
-    connect(&checkTask, &Task::failed, this,
-            [this](const QString& reason) { CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->exec(); });
-
-    connect(&checkTask, &Task::succeeded, this, [this, &checkTask]() {
-        QStringList warnings = checkTask.warnings();
-        if (warnings.count()) {
-            CustomMessageBox::selectable(this, tr("Warnings"), warnings.join('\n'), QMessageBox::Warning)->exec();
-        }
-    });
-
-    // Check for updates
-    ProgressDialog progressDialog(m_parent);
-    progressDialog.setSkipButton(true, tr("Abort"));
-    progressDialog.setWindowTitle(tr("Checking for updates..."));
-    auto ret = progressDialog.execWithTask(&checkTask);
-
-    // If the dialog was skipped / some download error happened
-    if (ret == QDialog::DialogCode::Rejected) {
+    QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> selectedVers;
+    QList<std::tuple<Resource*, QString, QUrl>> failed;
+    if (!runUpdateCheck(m_modrinthToUpdate, m_flameToUpdate, failed, selectedVers)) {
         m_aborted = true;
         QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
         return;
     }
 
-    QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> selectedVers;
-
-    // Add found updates for Modrinth
-    if (m_modrinthCheckTask) {
-        auto modrinthUpdates = m_modrinthCheckTask->getUpdates();
-        for (auto& updatable : modrinthUpdates) {
-            qDebug() << QString("Mod %1 has an update available!").arg(updatable.name);
-
-            appendResource(updatable);
-            m_tasks.insert(updatable.name, updatable.download);
-        }
-        selectedVers.append(m_modrinthCheckTask->getDependencies());
+    // Second chance: a mod whose provider has no usable version (the author
+    // moved to Modrinth, or the CurseForge listing stopped at an older game
+    // version) is looked up on the other provider by file hash. When it is
+    // there, its metadata switches over and the update check runs again.
+    QList<Resource*> tryModrinth;
+    QList<Resource*> tryFlame;
+    for (const auto& entry : failed) {
+        auto* resource = std::get<0>(entry);
+        if (!resource->metadata())
+            continue;
+        if (resource->metadata()->provider == ModPlatform::ResourceProvider::FLAME)
+            tryModrinth.append(resource);
+        else
+            tryFlame.append(resource);
     }
+    if (!tryModrinth.isEmpty() || !tryFlame.isEmpty()) {
+        QList<Resource*> secondModrinth;
+        QList<Resource*> secondFlame;
+        SequentialTask seq(tr("Looking on the other mod provider"));
+        auto hookup = [this, &seq, &secondModrinth, &secondFlame](QList<Resource*>& list, ModPlatform::ResourceProvider provider) {
+            if (list.isEmpty())
+                return;
+            auto task = makeShared<EnsureMetadataTask>(list, indexDir(), provider);
+            connect(task.get(), &EnsureMetadataTask::metadataReady, this, [&secondModrinth, &secondFlame](Resource* resource) {
+                if (!resource->metadata())
+                    return;
+                if (resource->metadata()->provider == ModPlatform::ResourceProvider::MODRINTH)
+                    secondModrinth.append(resource);
+                else
+                    secondFlame.append(resource);
+            });
+            if (task->getHashingTask())
+                seq.addTask(task->getHashingTask());
+            seq.addTask(task);
+        };
+        hookup(tryModrinth, ModPlatform::ResourceProvider::MODRINTH);
+        hookup(tryFlame, ModPlatform::ResourceProvider::FLAME);
 
-    // Add found updated for Flame
-    if (m_flameCheckTask) {
-        auto flameUpdates = m_flameCheckTask->getUpdates();
-        for (auto& updatable : flameUpdates) {
-            qDebug() << QString("Mod %1 has an update available!").arg(updatable.name);
-
-            appendResource(updatable);
-            m_tasks.insert(updatable.name, updatable.download);
+        ProgressDialog secondDialog(m_parent);
+        secondDialog.setSkipButton(true, tr("Abort"));
+        secondDialog.setWindowTitle(tr("Checking the other mod provider..."));
+        if (secondDialog.execWithTask(&seq) == QDialog::DialogCode::Rejected) {
+            m_aborted = true;
+            QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
+            return;
         }
-        selectedVers.append(m_flameCheckTask->getDependencies());
+
+        QList<std::tuple<Resource*, QString, QUrl>> secondFailed;
+        if (!runUpdateCheck(secondModrinth, secondFlame, secondFailed, selectedVers)) {
+            m_aborted = true;
+            QMetaObject::invokeMethod(this, "reject", Qt::QueuedConnection);
+            return;
+        }
+
+        QSet<Resource*> found;
+        for (auto* resource : secondModrinth)
+            found.insert(resource);
+        for (auto* resource : secondFlame)
+            found.insert(resource);
+        QSet<Resource*> stillFailed;
+        for (const auto& entry : secondFailed)
+            stillFailed.insert(std::get<0>(entry));
+
+        QList<std::tuple<Resource*, QString, QUrl>> remaining;
+        for (const auto& entry : failed) {
+            auto* resource = std::get<0>(entry);
+            if (!found.contains(resource)) {
+                remaining.append(entry);
+                continue;
+            }
+            const QString providerName = ModPlatform::ProviderCapabilities::readableName(resource->metadata()->provider);
+            if (stillFailed.contains(resource)) {
+                remaining.append({ resource, tr("no usable version on either Modrinth or CurseForge for this game version and loader"), {} });
+            } else {
+                m_switched.append(tr("%1: now tracked on %2, which has it for this game version").arg(resource->name(), providerName));
+            }
+        }
+        failed = remaining;
     }
+    m_failedCheckUpdate = failed;
 
     // Same treatment for resources the provider could not offer a version for
     // (nothing for this game version or loader, say): note it, move on.
-    for (const auto& failed : m_failedCheckUpdate) {
-        const auto& mod = std::get<0>(failed);
-        const auto& reason = std::get<1>(failed);
-        const auto& recoverUrl = std::get<2>(failed);
+    for (const auto& entry : m_failedCheckUpdate) {
+        const auto& mod = std::get<0>(entry);
+        const auto& reason = std::get<1>(entry);
+        const auto& recoverUrl = std::get<2>(entry);
         qDebug() << mod->name() << "failed to check for updates:" << reason;
         QString line = reason.isEmpty() ? tr("%1: could not check for updates").arg(mod->name()) : tr("%1: %2").arg(mod->name(), reason);
         if (!recoverUrl.isEmpty())
@@ -250,12 +272,17 @@ void ResourceUpdateDialog::checkCandidates()
         ui->gridLayout->addWidget(warningLabel, ui->gridLayout->rowCount(), 0, 1, -1);
     }
 
-    if (!m_skipped.isEmpty()) {
-        auto* skippedLabel = new QLabel(this);
-        skippedLabel->setWordWrap(true);
-        skippedLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        skippedLabel->setText(tr("Left alone (not updatable from here):\n%1").arg(m_skipped.join('\n')));
-        ui->gridLayout->addWidget(skippedLabel, ui->gridLayout->rowCount(), 0, 1, -1);
+    QStringList notes;
+    if (!m_switched.isEmpty())
+        notes << tr("Switched provider:") + '\n' + m_switched.join('\n');
+    if (!m_skipped.isEmpty())
+        notes << tr("Left alone (not updatable from here):") + '\n' + m_skipped.join('\n');
+    if (!notes.isEmpty()) {
+        auto* notesLabel = new QLabel(this);
+        notesLabel->setWordWrap(true);
+        notesLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        notesLabel->setText(notes.join("\n\n"));
+        ui->gridLayout->addWidget(notesLabel, ui->gridLayout->rowCount(), 0, 1, -1);
     }
 
     // If there's no resource to be updated
@@ -399,6 +426,11 @@ auto ResourceUpdateDialog::ensureMetadata() -> bool
             continue;
         }
 
+        if (recentlyUnresolved(candidate)) {
+            m_failedMetadata.append({ candidate, tr("not found on any provider last week, tried again weekly") });
+            continue;
+        }
+
         if (confirmRest) {
             addToTmp(candidate, providerRest);
             shouldTryOthers.insert(candidate->internal_id(), tryOthersRest);
@@ -494,9 +526,115 @@ void ResourceUpdateDialog::onMetadataEnsured(Resource* resource)
 
 QString ResourceUpdateDialog::skippedNote() const
 {
-    if (m_skipped.isEmpty())
+    QString note;
+    if (!m_switched.isEmpty())
+        note += "\n\n" + tr("Switched provider:") + '\n' + m_switched.join('\n');
+    if (!m_skipped.isEmpty())
+        note += "\n\n" + tr("Left alone (not updatable from here):") + '\n' + m_skipped.join('\n');
+    return note;
+}
+
+bool ResourceUpdateDialog::runUpdateCheck(QList<Resource*>& modrinth,
+                                          QList<Resource*>& flame,
+                                          QList<std::tuple<Resource*, QString, QUrl>>& failed,
+                                          QList<std::shared_ptr<GetModDependenciesTask::PackDependency>>& selectedVers)
+{
+    if (modrinth.isEmpty() && flame.isEmpty())
+        return true;
+
+    auto versions = mcVersions(m_instance);
+    SequentialTask checkTask(tr("Checking for updates"));
+    shared_qobject_ptr<ModrinthCheckUpdate> modrinthTask;
+    shared_qobject_ptr<FlameCheckUpdate> flameTask;
+
+    if (!modrinth.isEmpty()) {
+        modrinthTask.reset(new ModrinthCheckUpdate(modrinth, versions, m_loadersList, m_resourceModel));
+        connect(modrinthTask.get(), &CheckUpdateTask::checkFailed, this,
+                [&failed](Resource* resource, const QString& reason, const QUrl& recoverUrl) {
+                    failed.append({ resource, reason, recoverUrl });
+                });
+        checkTask.addTask(modrinthTask);
+    }
+    if (!flame.isEmpty()) {
+        flameTask.reset(new FlameCheckUpdate(flame, versions, m_loadersList, m_resourceModel));
+        connect(flameTask.get(), &CheckUpdateTask::checkFailed, this,
+                [&failed](Resource* resource, const QString& reason, const QUrl& recoverUrl) {
+                    failed.append({ resource, reason, recoverUrl });
+                });
+        checkTask.addTask(flameTask);
+    }
+
+    connect(&checkTask, &Task::failed, this,
+            [this](const QString& reason) { CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->exec(); });
+    connect(&checkTask, &Task::succeeded, this, [this, &checkTask]() {
+        QStringList warnings = checkTask.warnings();
+        if (warnings.count()) {
+            CustomMessageBox::selectable(this, tr("Warnings"), warnings.join('\n'), QMessageBox::Warning)->exec();
+        }
+    });
+
+    ProgressDialog progressDialog(m_parent);
+    progressDialog.setSkipButton(true, tr("Abort"));
+    progressDialog.setWindowTitle(tr("Checking for updates..."));
+    if (progressDialog.execWithTask(&checkTask) == QDialog::DialogCode::Rejected)
+        return false;
+
+    auto collect = [this, &selectedVers](CheckUpdateTask* task) {
+        for (auto& updatable : task->getUpdates()) {
+            qDebug() << QString("Mod %1 has an update available!").arg(updatable.name);
+            appendResource(updatable);
+            m_tasks.insert(updatable.name, updatable.download);
+        }
+        selectedVers.append(task->getDependencies());
+    };
+    if (modrinthTask)
+        collect(modrinthTask.get());
+    if (flameTask)
+        collect(flameTask.get());
+    return true;
+}
+
+namespace {
+const char* const UNRESOLVED_FILE = "portal-unresolved.json";
+constexpr qint64 UNRESOLVED_TTL_SECS = 7 * 24 * 60 * 60;
+
+QString unresolvedKey(Resource* resource)
+{
+    return resource->fileinfo().fileName() + '|' + QString::number(resource->fileinfo().size());
+}
+
+QJsonObject readUnresolved(const QDir& indexDir)
+{
+    QFile file(indexDir.absoluteFilePath(UNRESOLVED_FILE));
+    if (!file.open(QIODevice::ReadOnly))
         return {};
-    return "\n\n" + tr("Left alone (not updatable from here):") + '\n' + m_skipped.join('\n');
+    return QJsonDocument::fromJson(file.readAll()).object();
+}
+}  // namespace
+
+bool ResourceUpdateDialog::recentlyUnresolved(Resource* resource) const
+{
+    const auto entries = readUnresolved(indexDir());
+    const qint64 seen = static_cast<qint64>(entries.value(unresolvedKey(resource)).toDouble(0));
+    return seen > 0 && QDateTime::currentSecsSinceEpoch() - seen < UNRESOLVED_TTL_SECS;
+}
+
+void ResourceUpdateDialog::rememberUnresolved(Resource* resource)
+{
+    auto dir = indexDir();
+    if (!dir.exists() && !dir.mkpath("."))
+        return;
+    auto entries = readUnresolved(dir);
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    // Drop stale entries so the file does not grow with every renamed jar.
+    for (const auto& key : entries.keys()) {
+        if (now - static_cast<qint64>(entries.value(key).toDouble(0)) >= UNRESOLVED_TTL_SECS)
+            entries.remove(key);
+    }
+    entries[unresolvedKey(resource)] = static_cast<double>(now);
+    QFile file(dir.absoluteFilePath(UNRESOLVED_FILE));
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        file.write(QJsonDocument(entries).toJson(QJsonDocument::Compact));
 }
 
 ModPlatform::ResourceProvider next(ModPlatform::ResourceProvider p)
@@ -532,6 +670,7 @@ void ResourceUpdateDialog::onMetadataFailed(Resource* resource, bool tryOthers, 
     } else {
         QString reason{ tr("Couldn't find a valid version on the selected mod provider(s)") };
 
+        rememberUnresolved(resource);
         m_failedMetadata.append({ resource, reason });
     }
 }

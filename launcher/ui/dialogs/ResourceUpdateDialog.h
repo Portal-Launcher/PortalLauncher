@@ -40,6 +40,18 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
 
    private:
     auto ensureMetadata() -> bool;
+    /** Runs the provider update checks for the given resources, appends found
+     *  updates to the dialog and reports resources the provider had no usable
+     *  version for. Returns false when the user aborted. */
+    bool runUpdateCheck(QList<Resource*>& modrinth,
+                        QList<Resource*>& flame,
+                        QList<std::tuple<Resource*, QString, QUrl>>& failed,
+                        QList<std::shared_ptr<GetModDependenciesTask::PackDependency>>& selectedVers);
+    /** Mods that turned out to be on no provider are remembered for a week so
+     *  the next check neither hashes and queries them again nor asks which
+     *  provider to try. */
+    bool recentlyUnresolved(Resource* resource) const;
+    void rememberUnresolved(Resource* resource);
     QStringList findMissingDependencies(const QList<std::shared_ptr<GetModDependenciesTask::PackDependency>>& selectedVers);
 
    private slots:
@@ -50,9 +62,6 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
 
    private:
     QWidget* m_parent;
-
-    shared_qobject_ptr<ModrinthCheckUpdate> m_modrinthCheckTask;
-    shared_qobject_ptr<FlameCheckUpdate> m_flameCheckTask;
 
     ResourceFolderModel* m_resourceModel;
 
@@ -68,6 +77,7 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
     BaseInstance* m_instance;
 
     QStringList m_skipped;
+    QStringList m_switched;
     bool m_noUpdates = false;
     bool m_aborted = false;
     bool m_includeDeps = false;
