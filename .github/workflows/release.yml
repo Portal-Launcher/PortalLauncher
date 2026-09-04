@@ -75,13 +75,11 @@ jobs:
       - name: Check the update archives are safe to ship
         run: python3 PortalLauncher-${{ env.VERSION }}/.github/scripts/check-update-archives.py
 
-      - name: Write checksums
+      - name: Compute checksums
         run: |
-          for f in PortalLauncher-*.zip PortalLauncher-*.exe PortalLauncher-*.AppImage PortalLauncher-*.dmg; do
-            [ -f "$f" ] || continue
-            sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"
-          done
-          ls -1 *.sha256
+          sha256sum PortalLauncher-Setup-${{ env.VERSION }}.exe PortalLauncher-Windows-MSVC-${{ env.VERSION }}.zip \
+            PortalLauncher-macOS-${{ env.VERSION }}.dmg PortalLauncher-Linux-x86_64.AppImage > checksums.txt
+          cat checksums.txt
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
@@ -92,12 +90,11 @@ jobs:
             PortalLauncher-*.AppImage
             PortalLauncher-*.dmg
 
-      - name: Write the provenance section of the release notes
+      - name: Write the download and install section of the release notes
         env:
-          COMMIT: ${{ github.sha }}
           REPO: ${{ github.repository }}
         run: |
-          python3 PortalLauncher-${{ env.VERSION }}/.github/scripts/write-release-body.py "$VERSION" "$COMMIT" "$REPO" > release-body.md
+          python3 PortalLauncher-${{ env.VERSION }}/.github/scripts/write-release-body.py "$VERSION" "$REPO" checksums.txt > release-body.md
           cat release-body.md
 
       - name: Create release
@@ -116,4 +113,3 @@ jobs:
             PortalLauncher-Windows-MSVC-${{ env.VERSION }}.zip
             PortalLauncher-macOS-${{ env.VERSION }}.dmg
             PortalLauncher-Linux-x86_64.AppImage
-            *.sha256

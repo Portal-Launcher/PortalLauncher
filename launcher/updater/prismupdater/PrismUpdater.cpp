@@ -22,6 +22,7 @@
 
 #include "PrismUpdater.h"
 #include "updater/UpdateManifest.h"
+#include "updater/ReleaseChecksum.h"
 #include "updater/UpdateTagFilter.h"
 #include "BuildConfig.h"
 #include "ui/dialogs/ProgressDialog.h"
@@ -843,27 +844,32 @@ void PrismUpdaterApp::performUpdate(const GitHubRelease& release)
 
 bool PrismUpdaterApp::verifyAssetChecksum(const GitHubRelease& release, const GitHubReleaseAsset& asset, const QFileInfo& file)
 {
-    // Releases may publish a "<asset>.sha256" next to each artifact; when one
-    // exists the downloaded file has to match it before anything is installed.
-    GitHubReleaseAsset checksum_asset;
-    for (const auto& candidate : release.assets) {
-        if (candidate.name.compare(asset.name + ".sha256", Qt::CaseInsensitive) == 0) {
-            checksum_asset = candidate;
-            break;
+    // Since 1.0.8 the release description carries the sha256 of every
+    // download in a hidden comment (see ReleaseChecksum.h). Older releases
+    // published a "<asset>.sha256" file beside each download instead. Either
+    // way the downloaded file has to match before anything is installed.
+    QString expected = releaseBodyChecksum(release.body, asset.name);
+    if (expected.isEmpty()) {
+        GitHubReleaseAsset checksum_asset;
+        for (const auto& candidate : release.assets) {
+            if (candidate.name.compare(asset.name + ".sha256", Qt::CaseInsensitive) == 0) {
+                checksum_asset = candidate;
+                break;
+            }
         }
-    }
-    if (!checksum_asset.isValid()) {
-        logUpdate(tr("Release has no %1 asset; skipping checksum verification.").arg(asset.name + ".sha256"));
-        return true;
-    }
+        if (!checksum_asset.isValid()) {
+            logUpdate(tr("Release publishes no checksum for %1; skipping checksum verification.").arg(asset.name));
+            return true;
+        }
 
-    auto checksum_file = downloadAsset(checksum_asset);
-    if (!checksum_file.exists()) {
-        showFatalErrorMessage(tr("Failed to Download"), tr("Failed to download the release checksum file."));
-        return false;
+        auto checksum_file = downloadAsset(checksum_asset);
+        if (!checksum_file.exists()) {
+            showFatalErrorMessage(tr("Failed to Download"), tr("Failed to download the release checksum file."));
+            return false;
+        }
+        // Accept both bare-hash files and the "hash  filename" sha256sum format.
+        expected = QString::fromUtf8(FS::read(checksum_file.absoluteFilePath())).trimmed().section(' ', 0, 0).toLower();
     }
-    // Accept both bare-hash files and the "hash  filename" sha256sum format.
-    const QString expected = QString::fromUtf8(FS::read(checksum_file.absoluteFilePath())).trimmed().section(' ', 0, 0).toLower();
 
     QFile payload(file.absoluteFilePath());
     if (!payload.open(QIODevice::ReadOnly)) {

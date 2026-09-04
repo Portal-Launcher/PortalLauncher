@@ -15,6 +15,9 @@ ecm_add_test(UpdateTagFilter_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSI
 ecm_add_test(UpdateManifest_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME UpdateManifest)
 
+ecm_add_test(ReleaseChecksum_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME ReleaseChecksum)
+
 ecm_add_test(LauncherScanner_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME LauncherScanner)
 
