@@ -48,33 +48,16 @@ jobs:
             cmake-preset: linux
             qt-version: 6.10.2
 
-          - os: ubuntu-24.04-arm
-            artifact-name: Linux-aarch64
-            cmake-preset: linux
-            qt-version: 6.10.2
-
-          - os: windows-2022
-            artifact-name: Windows-MinGW-w64
-            cmake-preset: windows_mingw
-            msystem: CLANG64
-            vcvars-arch: amd64_x86
-
-          # No Windows-on-ARM MinGW build. Windows-MSVC-arm64 covers that
-          # hardware and is the build an ARM user would want; the MinGW ARM
-          # target only ever contributed a ResourceFolderModel test failure
-          # that no other platform sees, and a red release because of it.
+          # Only what a release publishes gets built: Windows x64 (MSVC),
+          # macOS universal and Linux x86_64. The MinGW, Windows ARM64 and
+          # Linux aarch64 targets upstream carries were dropped in 1.0.7 to
+          # keep releases to a handful of downloads and CI runs short.
 
           - os: windows-2022
             artifact-name: Windows-MSVC
             cmake-preset: windows_msvc
             # TODO(@getchoo): This is the default in setup-dependencies/windows. Why isn't it working?!?!
             vcvars-arch: amd64
-            qt-version: 6.10.2
-
-          - os: windows-11-arm
-            artifact-name: Windows-MSVC-arm64
-            cmake-preset: windows_msvc
-            vcvars-arch: arm64
             qt-version: 6.10.2
 
           - os: macos-26

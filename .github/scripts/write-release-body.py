@@ -29,7 +29,7 @@ Each file also carries a signed build provenance attestation. With the [GitHub C
 gh attestation verify PortalLauncher-Setup-{version}.exe --repo {repo}
 ```
 
-That works for any file attached to this release, so use the zip's name instead if that is what you downloaded. If you only want to know the download is not corrupted, every file has a `.sha256` beside it.
+That works for any file attached to this release (the Windows installer and zip, the macOS disk image, the Linux AppImage), so put in the name of whichever one you downloaded. If you only want to know the download is not corrupted, every file has a `.sha256` beside it.
 
 Windows builds are not code signed yet, so SmartScreen may warn the first time you run one: click "More info", then "Run anyway". Verifying the attestation above is a stronger check than a signature would be.
 

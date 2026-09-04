@@ -51,60 +51,33 @@ jobs:
       - name: Package artifacts properly
         run: |
           mv ${{ github.workspace }}/PortalLauncher-source PortalLauncher-${{ env.VERSION }}
-          mv PortalLauncher-Linux-Qt6-Portable*/PortalLauncher-portable.tar.gz PortalLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
-          mv PortalLauncher-Linux-aarch64-Qt6-Portable*/PortalLauncher-portable.tar.gz PortalLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
+          # Four downloads, one per platform, plus the plain zip the in-app
+          # updater installs from. Everything else the build makes (portable
+          # variants, source tarball, zsync) stays a CI artifact.
           mv PortalLauncher-*.AppImage/PortalLauncher-*-x86_64.AppImage PortalLauncher-Linux-x86_64.AppImage
-          mv PortalLauncher-*.AppImage.zsync/PortalLauncher-*-x86_64.AppImage.zsync PortalLauncher-Linux-x86_64.AppImage.zsync
-          mv PortalLauncher-*.AppImage/PortalLauncher-*-aarch64.AppImage PortalLauncher-Linux-aarch64.AppImage
-          mv PortalLauncher-*.AppImage.zsync/PortalLauncher-*-aarch64.AppImage.zsync PortalLauncher-Linux-aarch64.AppImage.zsync
-          # The macOS build is a universal (Apple silicon + Intel) app. Without
-          # Apple signing secrets it is ad-hoc signed, which Gatekeeper lets
-          # through after a one time "Open Anyway"; the release notes explain
-          # that, and the attestation is the real proof of origin.
-          mv PortalLauncher-macOS*/PortalLauncher.zip PortalLauncher-macOS-${{ env.VERSION }}.zip
           mv PortalLauncher-macOS*/PortalLauncher.dmg PortalLauncher-macOS-${{ env.VERSION }}.dmg
 
-          tar --exclude='.git' -czf PortalLauncher-${{ env.VERSION }}.tar.gz PortalLauncher-${{ env.VERSION }}
-
           # Naming rules the in-app updater depends on (validReleaseArtifacts in
-          # PrismUpdater.cpp): an archive is only offered as an update when its
-          # name contains the build artifact ("Windows-MSVC"), and arm64 and
-          # portable builds are told apart by name too. The installers are named
-          # WITHOUT the build artifact on purpose, so the updater can never pick
-          # a Setup.exe when it means to unpack a zip.
+          # PrismUpdater.cpp): the zip is only offered as an update when its
+          # name contains the build artifact ("Windows-MSVC"). The installer is
+          # named WITHOUT it on purpose, so the updater can never pick the
+          # Setup.exe when it means to unpack a zip.
           for d in PortalLauncher-Windows-MSVC*; do
             cd "${d}" || continue
-            ARM64="$(echo -n ${d} | grep -o arm64 || true)"
             INST="$(echo -n ${d} | grep -o Setup || true)"
             PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PortalLauncher-Windows-MSVC"
-            SETUP_NAME="PortalLauncher-Setup"
-            test -z "${ARM64}" || NAME="${NAME}-arm64"
-            test -z "${ARM64}" || SETUP_NAME="${SETUP_NAME}-arm64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../${SETUP_NAME}-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
+            if [ -n "${PORT}" ]; then cd ..; continue; fi
+            test -z "${INST}" || mv PrismLauncher-*.exe ../PortalLauncher-Setup-${{ env.VERSION }}.exe
+            test -n "${INST}" || zip -r -9 "../PortalLauncher-Windows-MSVC-${{ env.VERSION }}.zip" *
             cd ..
           done
-
-          for d in PortalLauncher-Windows-MinGW-w64*; do
-            cd "${d}" || continue
-            INST="$(echo -n ${d} | grep -o Setup || true)"
-            PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PortalLauncher-Windows-MinGW-w64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../PortalLauncher-MinGW-w64-Setup-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
-            cd ..
-          done
-
 
       - name: Check the update archives are safe to ship
         run: python3 PortalLauncher-${{ env.VERSION }}/.github/scripts/check-update-archives.py
 
       - name: Write checksums
         run: |
-          for f in PortalLauncher-*.zip PortalLauncher-*.exe PortalLauncher-*.tar.gz PortalLauncher-*.AppImage PortalLauncher-*.dmg; do
+          for f in PortalLauncher-*.zip PortalLauncher-*.exe PortalLauncher-*.AppImage PortalLauncher-*.dmg; do
             [ -f "$f" ] || continue
             sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"
           done
@@ -116,7 +89,6 @@ jobs:
           subject-path: |
             PortalLauncher-*.zip
             PortalLauncher-*.exe
-            PortalLauncher-*.tar.gz
             PortalLauncher-*.AppImage
             PortalLauncher-*.dmg
 
@@ -140,22 +112,8 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            PortalLauncher-Linux-x86_64.AppImage
-            PortalLauncher-Linux-x86_64.AppImage.zsync
-            PortalLauncher-Linux-aarch64.AppImage
-            PortalLauncher-Linux-aarch64.AppImage.zsync
-            PortalLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
-            PortalLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
-            PortalLauncher-Windows-MinGW-w64-${{ env.VERSION }}.zip
-            PortalLauncher-Windows-MinGW-w64-Portable-${{ env.VERSION }}.zip
-            PortalLauncher-MinGW-w64-Setup-${{ env.VERSION }}.exe
-            PortalLauncher-Windows-MSVC-arm64-${{ env.VERSION }}.zip
-            PortalLauncher-Windows-MSVC-arm64-Portable-${{ env.VERSION }}.zip
-            PortalLauncher-Setup-arm64-${{ env.VERSION }}.exe
-            PortalLauncher-Windows-MSVC-${{ env.VERSION }}.zip
-            PortalLauncher-Windows-MSVC-Portable-${{ env.VERSION }}.zip
             PortalLauncher-Setup-${{ env.VERSION }}.exe
-            PortalLauncher-macOS-${{ env.VERSION }}.zip
+            PortalLauncher-Windows-MSVC-${{ env.VERSION }}.zip
             PortalLauncher-macOS-${{ env.VERSION }}.dmg
-            PortalLauncher-${{ env.VERSION }}.tar.gz
+            PortalLauncher-Linux-x86_64.AppImage
             *.sha256
