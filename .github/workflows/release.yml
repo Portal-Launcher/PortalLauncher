@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "*"
+  # Fallback for when a tag push does not reach Actions: dispatch this
+  # workflow with the tag as the ref (gh workflow run release.yml --ref N.N.N)
+  # and it behaves exactly like the tag push would have.
+  workflow_dispatch:
 
 permissions: {}
 
