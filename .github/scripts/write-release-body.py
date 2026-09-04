@@ -45,8 +45,6 @@ Download **[PortalLauncher-Linux-x86_64.AppImage]({base}/PortalLauncher-Linux-x8
 
 Windows installs update themselves: the launcher checks once a day, or use Help > Check for Updates any time. Settings, instances and accounts all carry over. On macOS and Linux, download the new file from the newest release when one comes out; your settings and instances stay where they are.
 
-Built and released by Tinsley Devers.
-
 <!--
 {checksums}
 -->
