@@ -72,7 +72,10 @@ runs:
           ENTITLEMENTS_FILE='../program_info/AdhocSignedApp.entitlements'
         fi
 
-        sudo codesign --sign "$APPLE_CODESIGN_ID" --deep --force --entitlements "$ENTITLEMENTS_FILE" --options runtime "PrismLauncher.app/Contents/MacOS/prismlauncher"
+        # Sign the whole bundle, not just the main binary: Gatekeeper rejects a
+        # bundle whose frameworks or helpers carry a different (or no) signature.
+        sudo codesign --sign "$APPLE_CODESIGN_ID" --deep --force --entitlements "$ENTITLEMENTS_FILE" --options runtime "PrismLauncher.app"
+        codesign --verify --deep --strict --verbose=2 "PrismLauncher.app"
         mv "PrismLauncher.app" "Portal Launcher.app"
 
     - name: Notarize

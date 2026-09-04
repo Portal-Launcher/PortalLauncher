@@ -32,6 +32,8 @@ gh attestation verify PortalLauncher-Setup-{version}.exe --repo {repo}
 That works for any file attached to this release, so use the zip's name instead if that is what you downloaded. If you only want to know the download is not corrupted, every file has a `.sha256` beside it.
 
 Windows builds are not code signed yet, so SmartScreen may warn the first time you run one: click "More info", then "Run anyway". Verifying the attestation above is a stronger check than a signature would be.
+
+The macOS build (one app for Apple silicon and Intel) is not notarized with Apple yet either. The first time you open it macOS will say it cannot check it for malware: close that message, open System Settings, go to Privacy & Security, scroll down and click "Open Anyway" next to Portal Launcher. On macOS 14 and older, right click the app and choose Open instead. You only have to do this once.
 """
 
 
