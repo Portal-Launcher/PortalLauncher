@@ -83,12 +83,40 @@ void ModModel::searchWithTerm(const QString& term, unsigned int sort, bool filte
     refresh();
 }
 
+namespace {
+/** "Sodium Extra", "sodium-extra" and "SodiumExtra" are the same listing. */
+QString normalisedModName(const QString& name)
+{
+    QString out;
+    for (const QChar c : name) {
+        if (c.isLetterOrNumber())
+            out += c.toLower();
+    }
+    return out;
+}
+
+/** The same mod listed on Modrinth and on CurseForge has different project ids,
+ *  so an id match only works within one provider. Across providers the slug
+ *  or the name has to do: those are the same on both sites in practice, and
+ *  a mod you installed from Modrinth should not show as "not installed" when
+ *  you come across it on CurseForge. */
+bool metadataMatchesPack(const Metadata::ModStruct& meta, const ModPlatform::IndexedPack& pack)
+{
+    if (meta.provider == pack.provider)
+        return meta.project_id == pack.addonId;
+    if (!meta.slug.isEmpty() && !pack.slug.isEmpty() && meta.slug.compare(pack.slug, Qt::CaseInsensitive) == 0)
+        return true;
+    const QString ours = normalisedModName(meta.name);
+    return !ours.isEmpty() && ours == normalisedModName(pack.name);
+}
+}  // namespace
+
 bool ModModel::isPackInstalled(ModPlatform::IndexedPack::Ptr pack) const
 {
     auto allMods = static_cast<MinecraftInstance&>(m_base_instance).loaderModList()->allMods();
     return std::any_of(allMods.cbegin(), allMods.cend(), [pack](Mod* mod) {
         if (auto meta = mod->metadata(); meta)
-            return meta->provider == pack->provider && meta->project_id == pack->addonId;
+            return metadataMatchesPack(*meta, *pack);
         return false;
     });
 }
@@ -97,8 +125,10 @@ QVariant ModModel::getInstalledPackVersion(ModPlatform::IndexedPack::Ptr pack) c
 {
     auto allMods = static_cast<MinecraftInstance&>(m_base_instance).loaderModList()->allMods();
     for (auto mod : allMods) {
-        if (auto meta = mod->metadata(); meta && meta->provider == pack->provider && meta->project_id == pack->addonId) {
-            return meta->version();
+        if (auto meta = mod->metadata(); meta && metadataMatchesPack(*meta, *pack)) {
+            // Version ids only line up within one provider; for a cross
+            // provider match there is no file id to mark as installed.
+            return meta->provider == pack->provider ? meta->version() : QVariant();
         }
     }
     return {};
